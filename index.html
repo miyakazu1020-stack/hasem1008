@@ -449,7 +449,7 @@
     (function () {
       'use strict';
 
-      const STORAGE_KEY = 'team_attendance_app_v1';
+      const STORAGE_KEY = 'team_attendance_app_v3';
 
       const AVATAR_COLORS = [
         'bg-indigo-100 text-indigo-700',
@@ -463,21 +463,15 @@
       ];
 
       const DEFAULT_EMPLOYEES = [
-        { id: 'emp-01', name: '직원 1', department: '경영지원', role: '팀장', pin: '1111', colorIdx: 0 },
-        { id: 'emp-02', name: '직원 2', department: '경영지원', role: '매니저', pin: '2222', colorIdx: 1 },
-        { id: 'emp-03', name: '직원 3', department: '개발팀', role: '리드', pin: '3333', colorIdx: 2 },
-        { id: 'emp-04', name: '직원 4', department: '개발팀', role: '팀원', pin: '4444', colorIdx: 3 },
-        { id: 'emp-05', name: '직원 5', department: '개발팀', role: '팀원', pin: '5555', colorIdx: 4 },
-        { id: 'emp-06', name: '직원 6', department: '디자인팀', role: '리드', pin: '6666', colorIdx: 5 },
-        { id: 'emp-07', name: '직원 7', department: '디자인팀', role: '팀원', pin: '7777', colorIdx: 6 },
-        { id: 'emp-08', name: '직원 8', department: '영업·마케팅', role: '매니저', pin: '8888', colorIdx: 7 },
-        { id: 'emp-09', name: '직원 9', department: '영업·마케팅', role: '팀원', pin: '9999', colorIdx: 0 },
-        { id: 'emp-10', name: '직원 10', department: '운영팀', role: '팀원', pin: '0000', colorIdx: 1 }
+        { id: 'emp-01', name: '김슬기', department: '세무기장', role: '과장', pin: '1111', colorIdx: 0 },
+        { id: 'emp-02', name: '어슬기', department: '세무기장', role: '팀장', pin: '2222', colorIdx: 1 },
+        { id: 'emp-03', name: '하종식', department: '영업 마케팅', role: '실장', pin: '3333', colorIdx: 2 },
+        { id: 'emp-04', name: '손희수', department: '세무기장', role: '대리', pin: '4444', colorIdx: 3 }
       ];
 
       const DEFAULT_SETTINGS = {
         startTime: '09:00',
-        endTime: '18:00',
+        endTime: '17:00',
         graceMinutes: 5,
         breakMinutes: 60,
         requirePin: false,
@@ -486,7 +480,7 @@
         workplaceLat: 37.3219,
         workplaceLng: 126.8309,
         radiusMeters: 100,
-        sheetUrl: ''
+        sheetUrl: 'https://script.google.com/macros/s/AKfycbySqh_FQtTAfVQQa8ghNUllHiAlEPBjA20ZwtPi5s0ZUGUQP_wjYGTMXx_2LkiJnZosyQ/exec'
       };
 
       // State
@@ -863,6 +857,8 @@
           if (data && data.ok) {
             if (Array.isArray(data.employees) && data.employees.length > 0) {
               state.employees = data.employees;
+            } else if (state.employees.length > 0) {
+              pushToSheet({ action: 'syncEmployees', employees: state.employees });
             }
             if (Array.isArray(data.records)) {
               state.records = data.records;
