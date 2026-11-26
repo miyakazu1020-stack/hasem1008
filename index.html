@@ -452,7 +452,7 @@
     (function () {
       'use strict';
 
-      const STORAGE_KEY = 'team_attendance_app_v5';
+      const STORAGE_KEY = 'team_attendance_app_v6';
 
       const AVATAR_COLORS = [
         'bg-indigo-100 text-indigo-700',
@@ -482,7 +482,7 @@
         workplaceName: '우리 회사',
         workplaceLat: 37.319456,
         workplaceLng: 126.832646,
-        radiusMeters: 100,
+        radiusMeters: 50,
         sheetUrl: 'https://script.google.com/macros/s/AKfycbySqh_FQtTAfVQQa8ghNUllHiAlEPBjA20ZwtPi5s0ZUGUQP_wjYGTMXx_2LkiJnZosyQ/exec'
       };
 
@@ -614,7 +614,7 @@
       }
 
       function getGeoEvaluation() {
-        const radius = Math.max(20, Number(state.settings.radiusMeters) || 100);
+        const radius = Math.max(20, Number(state.settings.radiusMeters) || 50);
         if (!state.settings.geoEnabled) {
           return { enabled: false, ready: true, inside: true, outside: true, distance: null, radius: radius };
         }
@@ -640,14 +640,14 @@
 
       function recomputeGeoDistance() {
         if (state.geo.mode === 'sim-inside') {
-          const radius = Math.max(20, Number(state.settings.radiusMeters) || 100);
+          const radius = Math.max(20, Number(state.settings.radiusMeters) || 50);
           state.geo.status = 'ready';
           state.geo.distanceMeters = Math.max(10, Math.round(radius * 0.25));
           state.geo.errorMessage = '';
           return;
         }
         if (state.geo.mode === 'sim-outside') {
-          const radius = Math.max(20, Number(state.settings.radiusMeters) || 100);
+          const radius = Math.max(20, Number(state.settings.radiusMeters) || 50);
           state.geo.status = 'ready';
           state.geo.distanceMeters = radius + 250;
           state.geo.errorMessage = '';
@@ -943,7 +943,23 @@
             if (Array.isArray(data.records)) {
               const dedupMap = new Map();
               data.records.forEach(function (r) {
-                if (!r || !r.empId) return;
+                if (!r) return;
+                if (String(r.id) === '__SETTINGS__' || String(r.empId) === '__SYSTEM__') {
+                  if (r.memo) {
+                    try {
+                      const remoteCfg = JSON.parse(String(r.memo));
+                      if (remoteCfg && typeof remoteCfg === 'object') {
+                        const keepSheetUrl = state.settings.sheetUrl;
+                        state.settings = Object.assign({}, state.settings, remoteCfg, { sheetUrl: keepSheetUrl });
+                        recomputeGeoDistance();
+                      }
+                    } catch (cfgErr) {
+                      // Ignore malformed settings row
+                    }
+                  }
+                  return;
+                }
+                if (!r.empId) return;
                 const normDate = normalizeSheetDate(r.date);
                 if (!normDate) return;
                 const normalized = {
@@ -1001,6 +1017,33 @@
             showToast('시트 저장 확인 실패 (네트워크 상태를 확인해 주세요)', 'error');
           }
         }
+      }
+
+      function pushSettingsToSheet() {
+        const sharedCfg = {
+          startTime: state.settings.startTime,
+          endTime: state.settings.endTime,
+          graceMinutes: state.settings.graceMinutes,
+          breakMinutes: state.settings.breakMinutes,
+          requirePin: state.settings.requirePin,
+          geoEnabled: state.settings.geoEnabled,
+          workplaceName: state.settings.workplaceName,
+          workplaceLat: state.settings.workplaceLat,
+          workplaceLng: state.settings.workplaceLng,
+          radiusMeters: state.settings.radiusMeters
+        };
+        return pushToSheet({
+          action: 'upsertRecord',
+          record: {
+            id: '__SETTINGS__',
+            empId: '__SYSTEM__',
+            date: '2000-01-01',
+            status: 'config',
+            checkIn: '',
+            checkOut: '',
+            memo: JSON.stringify(sharedCfg)
+          }
+        });
       }
 
       const APPS_SCRIPT_CODE = [
@@ -1580,18 +1623,24 @@
           }).join('');
         }
 
-        // Populate settings form
-        document.getElementById('set-start-time').value = state.settings.startTime;
-        document.getElementById('set-end-time').value = state.settings.endTime;
-        document.getElementById('set-grace-min').value = String(state.settings.graceMinutes);
-        document.getElementById('set-break-min').value = String(state.settings.breakMinutes);
-        document.getElementById('set-require-pin').checked = Boolean(state.settings.requirePin);
-        document.getElementById('set-geo-enabled').checked = Boolean(state.settings.geoEnabled);
-        document.getElementById('set-workplace-name').value = state.settings.workplaceName || '우리 회사';
-        document.getElementById('set-geo-radius').value = String(state.settings.radiusMeters || 100);
-        document.getElementById('set-workplace-lat').value = String(state.settings.workplaceLat != null ? state.settings.workplaceLat : 37.319456);
-        document.getElementById('set-workplace-lng').value = String(state.settings.workplaceLng != null ? state.settings.workplaceLng : 126.832646);
-        document.getElementById('set-sheet-url').value = state.settings.sheetUrl || '';
+        // Populate settings form (skip overwriting while user is actively editing an input inside settings-form)
+        const settingsFormEl = document.getElementById('settings-form');
+        const isEditingSettings = settingsFormEl && document.activeElement && settingsFormEl.contains(document.activeElement);
+        if (!isEditingSettings) {
+          document.getElementById('set-start-time').value = state.settings.startTime;
+          document.getElementById('set-end-time').value = state.settings.endTime;
+          document.getElementById('set-grace-min').value = String(state.settings.graceMinutes);
+          document.getElementById('set-break-min').value = String(state.settings.breakMinutes);
+          document.getElementById('set-require-pin').checked = Boolean(state.settings.requirePin);
+          document.getElementById('set-geo-enabled').checked = Boolean(state.settings.geoEnabled);
+          document.getElementById('set-workplace-name').value = state.settings.workplaceName || '우리 회사';
+          document.getElementById('set-geo-radius').value = String(state.settings.radiusMeters || 50);
+          document.getElementById('set-workplace-lat').value = String(state.settings.workplaceLat != null ? state.settings.workplaceLat : 37.319456);
+          document.getElementById('set-workplace-lng').value = String(state.settings.workplaceLng != null ? state.settings.workplaceLng : 126.832646);
+        }
+        if (document.activeElement !== document.getElementById('set-sheet-url')) {
+          document.getElementById('set-sheet-url').value = state.settings.sheetUrl || '';
+        }
         updateSyncIndicators(false, '');
       }
 
@@ -2202,7 +2251,8 @@
                 state.geo.mode = 'real';
                 recomputeGeoDistance();
                 saveState();
-                showToast('현재 위치가 직장 좌표로 저장되었습니다.', 'success');
+                pushSettingsToSheet();
+                showToast('현재 위치가 직장 좌표로 저장·공유되었습니다.', 'success');
               },
               function () {
                 showToast('위치 권한을 허용해야 현재 좌표를 가져올 수 있습니다.', 'error');
@@ -2224,15 +2274,16 @@
           state.settings.requirePin = document.getElementById('set-require-pin').checked;
           state.settings.geoEnabled = document.getElementById('set-geo-enabled').checked;
           state.settings.workplaceName = document.getElementById('set-workplace-name').value.trim() || '우리 회사';
-          state.settings.radiusMeters = Math.max(20, parseInt(document.getElementById('set-geo-radius').value, 10) || 100);
+          state.settings.radiusMeters = Math.max(20, parseInt(document.getElementById('set-geo-radius').value, 10) || 50);
           const latVal = parseFloat(document.getElementById('set-workplace-lat').value);
           const lngVal = parseFloat(document.getElementById('set-workplace-lng').value);
           if (!Number.isNaN(latVal)) state.settings.workplaceLat = latVal;
           if (!Number.isNaN(lngVal)) state.settings.workplaceLng = lngVal;
           recomputeGeoDistance();
           saveState();
+          pushSettingsToSheet();
           renderAll();
-          showToast('근무 기준 및 위치 설정이 저장되었습니다.', 'success');
+          showToast('근무 기준 및 위치 설정이 모든 기기에 공유·저장되었습니다.', 'success');
         });
 
         // Backup & Restore & Reset
