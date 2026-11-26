@@ -1,0 +1,2186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#4f46e5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="출퇴근체크" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link id="pwa-apple-icon" rel="apple-touch-icon" href="" />
+  <link id="pwa-manifest" rel="manifest" href="" />
+  <title>팀 출퇴근 체크 · 근태 관리</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    .toast-enter {
+      animation: toastSlideIn 0.25s ease-out forwards;
+    }
+    @keyframes toastSlideIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .modal-backdrop {
+      animation: fadeIn 0.15s ease-out forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- Top Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+          <i data-lucide="clock" class="w-5 h-5"></i>
+        </div>
+        <div class="min-w-0">
+          <h1 class="text-base sm:text-lg font-bold text-slate-900 truncate leading-tight">팀 출퇴근 체크</h1>
+          <p class="text-xs text-slate-500 hidden sm:block truncate">소규모 팀 근태 관리</p>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="flex items-center bg-slate-100 p-1 rounded-xl shrink-0" aria-label="주요 메뉴">
+        <button type="button" data-tab="check" class="nav-tab px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5">
+          <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+          <span>출퇴근</span>
+        </button>
+        <button type="button" data-tab="records" class="nav-tab px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5">
+          <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+          <span>기록·통계</span>
+        </button>
+        <button type="button" data-tab="team" class="nav-tab px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5">
+          <i data-lucide="users" class="w-4 h-4"></i>
+          <span>직원·설정</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-5 sm:py-6">
+    <!-- TAB 1: 출퇴근 체크 -->
+    <section id="view-check" class="space-y-5">
+      <!-- Live Clock & Summary Banner -->
+      <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-2xl p-5 sm:p-6 shadow-sm">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div>
+            <div class="flex items-center gap-2 text-indigo-300 text-xs sm:text-sm font-medium mb-1">
+              <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span id="live-date-label">날짜 불러오는 중...</span>
+            </div>
+            <div id="live-clock" class="text-3xl sm:text-4xl font-bold tracking-tight tabular-nums">00:00:00</div>
+            <p class="text-xs sm:text-sm text-slate-300 mt-1.5">
+              기준 근무시간 <span id="banner-work-hours" class="font-semibold text-white tabular-nums">09:00 ~ 18:00</span>
+              <span id="banner-pin-badge" class="hidden ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 text-xs">
+                <i data-lucide="lock" class="w-3 h-3"></i> PIN 인증 사용 중
+              </span>
+              <span id="banner-sync-badge" class="hidden ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-200 text-xs">
+                <i data-lucide="cloud" class="w-3 h-3"></i> <span id="banner-sync-text">시트 연동 중</span>
+              </span>
+              <button type="button" id="btn-sync-now" class="hidden ml-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs transition-colors">
+                <i data-lucide="refresh-cw" class="w-3 h-3"></i> 새로고침
+              </button>
+            </p>
+          </div>
+
+          <!-- KPI Pills -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+            <div class="bg-white/10 backdrop-blur-sm rounded-xl px-3.5 py-2.5 border border-white/10">
+              <div class="text-xs text-slate-300">전체 인원</div>
+              <div class="text-xl sm:text-2xl font-bold tabular-nums mt-0.5"><span id="kpi-total">0</span><span class="text-xs font-normal text-slate-300 ml-0.5">명</span></div>
+            </div>
+            <div class="bg-emerald-500/20 backdrop-blur-sm rounded-xl px-3.5 py-2.5 border border-emerald-400/20">
+              <div class="text-xs text-emerald-200">근무 중</div>
+              <div class="text-xl sm:text-2xl font-bold tabular-nums text-emerald-300 mt-0.5"><span id="kpi-working">0</span><span class="text-xs font-normal text-emerald-200 ml-0.5">명</span></div>
+            </div>
+            <div class="bg-white/10 backdrop-blur-sm rounded-xl px-3.5 py-2.5 border border-white/10">
+              <div class="text-xs text-slate-300">출근 전</div>
+              <div class="text-xl sm:text-2xl font-bold tabular-nums mt-0.5"><span id="kpi-before">0</span><span class="text-xs font-normal text-slate-300 ml-0.5">명</span></div>
+            </div>
+            <div class="bg-indigo-500/20 backdrop-blur-sm rounded-xl px-3.5 py-2.5 border border-indigo-400/20">
+              <div class="text-xs text-indigo-200">퇴근·휴가</div>
+              <div class="text-xl sm:text-2xl font-bold tabular-nums text-indigo-200 mt-0.5"><span id="kpi-done">0</span><span class="text-xs font-normal text-indigo-200 ml-0.5">명</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Geofence / Location Status Bar -->
+      <div id="geo-status-bar" class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 shadow-xs">
+        <div class="flex items-start sm:items-center gap-3 min-w-0">
+          <div id="geo-icon-wrap" class="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+            <i data-lucide="map-pin" class="w-5 h-5"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="geo-status-title" class="text-sm font-bold text-slate-900">위치 확인 중...</span>
+              <span id="geo-status-badge" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">확인 전</span>
+            </div>
+            <p id="geo-status-desc" class="text-xs text-slate-500 mt-0.5">출근은 직장 범위 내, 퇴근은 직장 범위를 벗어났을 때만 가능합니다.</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-1.5 shrink-0">
+          <button type="button" id="btn-geo-refresh" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5">
+            <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+            <span>실제 GPS 확인</span>
+          </button>
+          <div class="inline-flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/70">
+            <button type="button" data-geo-sim="inside" class="geo-sim-btn px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors">테스트: 직장 안</button>
+            <button type="button" data-geo-sim="outside" class="geo-sim-btn px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors">테스트: 직장 밖</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter & Search Bar -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0" id="status-filter-bar">
+          <button type="button" data-status-filter="all" class="status-filter-btn px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap">전체</button>
+          <button type="button" data-status-filter="working" class="status-filter-btn px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap">근무 중</button>
+          <button type="button" data-status-filter="before" class="status-filter-btn px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap">출근 전</button>
+          <button type="button" data-status-filter="off" class="status-filter-btn px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap">퇴근 완료</button>
+          <button type="button" data-status-filter="leave" class="status-filter-btn px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap">휴가</button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <div class="relative flex-1 sm:w-52">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+            <input id="employee-search" type="text" placeholder="이름·부서 검색..." class="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500" />
+          </div>
+          <select id="dept-filter" class="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500">
+            <option value="all">전체 부서</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Employee Cards Grid -->
+      <div id="employee-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+      <!-- Empty Filter State -->
+      <div id="employee-empty-state" class="hidden bg-white border border-slate-200 rounded-2xl p-10 text-center">
+        <p class="text-sm text-slate-500">조건에 맞는 직원이 없습니다.</p>
+      </div>
+    </section>
+
+    <!-- TAB 2: 기록·통계 -->
+    <section id="view-records" class="hidden space-y-5">
+      <!-- Controls Header -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2">
+            <label for="records-month" class="text-xs font-semibold text-slate-500">조회 월</label>
+            <input id="records-month" type="month" class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500" />
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="records-emp-filter" class="text-xs font-semibold text-slate-500">직원</label>
+            <select id="records-emp-filter" class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500">
+              <option value="all">전체 직원</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" id="btn-add-manual-record" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>수동 기록 추가</span>
+          </button>
+          <button type="button" id="btn-export-csv" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span>엑셀(CSV) 내보내기</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Monthly Hours Chart -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-sm sm:text-base font-bold text-slate-900">월간 누적 근무시간</h2>
+            <p class="text-xs text-slate-500">휴게시간 차감 기준 · 단위: 시간</p>
+          </div>
+          <span id="chart-month-badge" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 tabular-nums"></span>
+        </div>
+        <div class="relative h-72">
+          <canvas id="hours-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Monthly Employee Summary Table -->
+      <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <div class="px-4 sm:px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-sm sm:text-base font-bold text-slate-900">직원별 월간 요약</h2>
+          <span class="text-xs text-slate-500">지각·조퇴 및 총 근무시간</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr class="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-200">
+                <th class="py-2.5 px-4 font-semibold">직원</th>
+                <th class="py-2.5 px-3 font-semibold text-right">출근일</th>
+                <th class="py-2.5 px-3 font-semibold text-right">지각</th>
+                <th class="py-2.5 px-3 font-semibold text-right">조퇴</th>
+                <th class="py-2.5 px-3 font-semibold text-right">휴가</th>
+                <th class="py-2.5 px-4 font-semibold text-right">총 근무시간</th>
+              </tr>
+            </thead>
+            <tbody id="monthly-summary-body" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Daily Logs Table -->
+      <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <div class="px-4 sm:px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-sm sm:text-base font-bold text-slate-900">일별 상세 기록</h2>
+          <span id="logs-count-badge" class="text-xs font-medium text-slate-500 tabular-nums">0건</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr class="bg-slate-50 text-slate-500 text-xs border-b border-slate-200">
+                <th class="py-2.5 px-4 font-semibold">날짜</th>
+                <th class="py-2.5 px-3 font-semibold">직원</th>
+                <th class="py-2.5 px-3 font-semibold">상태</th>
+                <th class="py-2.5 px-3 font-semibold">출근</th>
+                <th class="py-2.5 px-3 font-semibold">퇴근</th>
+                <th class="py-2.5 px-3 font-semibold text-right">근무시간</th>
+                <th class="py-2.5 px-3 font-semibold">메모</th>
+                <th class="py-2.5 px-4 font-semibold text-right">관리</th>
+              </tr>
+            </thead>
+            <tbody id="daily-logs-body" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: 직원·설정 -->
+    <section id="view-team" class="hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <!-- Employee Roster Management -->
+        <div class="lg:col-span-2 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-sm sm:text-base font-bold text-slate-900">직원 명단 관리</h2>
+              <p class="text-xs text-slate-500 mt-0.5">실제 직원 이름·부서·직책을 자유롭게 수정하거나 추가할 수 있습니다.</p>
+            </div>
+            <button type="button" id="btn-open-add-emp" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shrink-0">
+              <i data-lucide="user-plus" class="w-4 h-4"></i>
+              <span>직원 추가</span>
+            </button>
+          </div>
+          <div id="team-list" class="divide-y divide-slate-100"></div>
+        </div>
+
+        <!-- Settings & Backup -->
+        <div class="space-y-5">
+          <!-- Work Hours Settings -->
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+            <h2 class="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="sliders-horizontal" class="w-4 h-4 text-indigo-600"></i>
+              <span>근무 기준 설정</span>
+            </h2>
+            <form id="settings-form" class="space-y-3.5">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="set-start-time" class="block text-xs font-semibold text-slate-600 mb-1">기준 출근</label>
+                  <input id="set-start-time" type="time" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500/30" required />
+                </div>
+                <div>
+                  <label for="set-end-time" class="block text-xs font-semibold text-slate-600 mb-1">기준 퇴근</label>
+                  <input id="set-end-time" type="time" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500/30" required />
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="set-grace-min" class="block text-xs font-semibold text-slate-600 mb-1">지각 유예 (분)</label>
+                  <input id="set-grace-min" type="number" min="0" max="60" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500/30" required />
+                </div>
+                <div>
+                  <label for="set-break-min" class="block text-xs font-semibold text-slate-600 mb-1">휴게 차감 (분)</label>
+                  <input id="set-break-min" type="number" min="0" max="120" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500/30" required />
+                </div>
+              </div>
+              <label class="flex items-start gap-2.5 pt-1 cursor-pointer">
+                <input id="set-require-pin" type="checkbox" class="mt-0.5 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                <span class="text-xs text-slate-700 leading-relaxed">
+                  <strong class="font-semibold text-slate-900">출퇴근 시 PIN(4자리) 확인</strong><br />
+                  공용 태블릿(키오스크) 사용 시 본인 확인용으로 활용합니다.
+                </span>
+              </label>
+
+              <div class="border-t border-slate-100 pt-3.5 space-y-3">
+                <label class="flex items-start gap-2.5 cursor-pointer">
+                  <input id="set-geo-enabled" type="checkbox" class="mt-0.5 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span class="text-xs text-slate-700 leading-relaxed">
+                    <strong class="font-semibold text-slate-900">위치(GPS) 기반 출퇴근 제한</strong><br />
+                    출근은 직장 범위 내, 퇴근은 직장 범위 밖에서만 허용합니다.
+                  </span>
+                </label>
+
+                <div class="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label for="set-workplace-name" class="block text-xs font-semibold text-slate-600 mb-1">직장 이름</label>
+                    <input id="set-workplace-name" type="text" placeholder="예: 본사 사무실" class="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
+                  </div>
+                  <div>
+                    <label for="set-geo-radius" class="block text-xs font-semibold text-slate-600 mb-1">허용 반경 (m)</label>
+                    <input id="set-geo-radius" type="number" min="20" max="5000" step="10" class="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label for="set-workplace-lat" class="block text-xs font-semibold text-slate-600 mb-1">위도 (Lat)</label>
+                    <input id="set-workplace-lat" type="number" step="0.000001" class="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
+                  </div>
+                  <div>
+                    <label for="set-workplace-lng" class="block text-xs font-semibold text-slate-600 mb-1">경도 (Lng)</label>
+                    <input id="set-workplace-lng" type="number" step="0.000001" class="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
+                  </div>
+                </div>
+
+                <button type="button" id="btn-set-current-workplace" class="w-full py-2 px-3 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100/70 text-indigo-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5">
+                  <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+                  <span>현재 내 위치를 직장 좌표로 설정</span>
+                </button>
+              </div>
+
+              <button type="submit" class="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold transition-colors">
+                설정 저장
+              </button>
+            </form>
+          </div>
+
+          <!-- Google Sheets Cloud Sync -->
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+                <i data-lucide="sheet" class="w-4 h-4 text-emerald-600"></i>
+                <span>구글 시트 연동 (팀 공유)</span>
+              </h2>
+              <span id="sheet-status-pill" class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500">미연결</span>
+            </div>
+            <p class="text-xs text-slate-500 leading-relaxed">
+              직원 10명이 각자 휴대폰에서 체크한 기록을 하나의 구글 스프레드시트에 실시간으로 모읍니다.
+            </p>
+            <div>
+              <label for="set-sheet-url" class="block text-xs font-semibold text-slate-600 mb-1">Apps Script 웹 앱 URL</label>
+              <input id="set-sheet-url" type="url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" id="btn-save-sheet-url" class="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5">
+                <i data-lucide="link" class="w-3.5 h-3.5"></i>
+                <span>연결·동기화</span>
+              </button>
+              <button type="button" id="btn-open-apps-script" class="py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1.5">
+                <i data-lucide="code-2" class="w-3.5 h-3.5"></i>
+                <span>연동 코드 보기</span>
+              </button>
+            </div>
+            <button type="button" id="btn-open-install-guide" class="w-full py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5">
+              <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+              <span>휴대폰 앱 설치(홈 화면 추가) 방법 보기</span>
+            </button>
+          </div>
+
+          <!-- Data Backup / Restore -->
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
+            <h2 class="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="database" class="w-4 h-4 text-indigo-600"></i>
+              <span>데이터 백업 · 복원</span>
+            </h2>
+            <p class="text-xs text-slate-500 leading-relaxed">
+              모든 출퇴근 기록은 현재 브라우저에 자동 저장됩니다. 다른 기기로 옮기거나 보관할 때 JSON 백업을 이용하세요.
+            </p>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" id="btn-backup-json" class="py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1.5">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                <span>JSON 백업</span>
+              </button>
+              <label class="py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer">
+                <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                <span>JSON 복원</span>
+                <input id="input-restore-json" type="file" accept=".json,application/json" class="hidden" />
+              </label>
+            </div>
+            <button type="button" id="btn-reset-records" class="w-full py-2 px-3 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-semibold transition-colors">
+              출퇴근 기록 전체 초기화
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal Container -->
+  <div id="modal-overlay" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 modal-backdrop">
+    <div id="modal-panel" class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <h3 id="modal-title" class="text-base font-bold text-slate-900">모달</h3>
+        <button type="button" id="modal-close-btn" class="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors" aria-label="닫기">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div id="modal-body" class="p-5"></div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const STORAGE_KEY = 'team_attendance_app_v1';
+
+      const AVATAR_COLORS = [
+        'bg-indigo-100 text-indigo-700',
+        'bg-emerald-100 text-emerald-700',
+        'bg-amber-100 text-amber-700',
+        'bg-sky-100 text-sky-700',
+        'bg-rose-100 text-rose-700',
+        'bg-violet-100 text-violet-700',
+        'bg-teal-100 text-teal-700',
+        'bg-orange-100 text-orange-700'
+      ];
+
+      const DEFAULT_EMPLOYEES = [
+        { id: 'emp-01', name: '직원 1', department: '경영지원', role: '팀장', pin: '1111', colorIdx: 0 },
+        { id: 'emp-02', name: '직원 2', department: '경영지원', role: '매니저', pin: '2222', colorIdx: 1 },
+        { id: 'emp-03', name: '직원 3', department: '개발팀', role: '리드', pin: '3333', colorIdx: 2 },
+        { id: 'emp-04', name: '직원 4', department: '개발팀', role: '팀원', pin: '4444', colorIdx: 3 },
+        { id: 'emp-05', name: '직원 5', department: '개발팀', role: '팀원', pin: '5555', colorIdx: 4 },
+        { id: 'emp-06', name: '직원 6', department: '디자인팀', role: '리드', pin: '6666', colorIdx: 5 },
+        { id: 'emp-07', name: '직원 7', department: '디자인팀', role: '팀원', pin: '7777', colorIdx: 6 },
+        { id: 'emp-08', name: '직원 8', department: '영업·마케팅', role: '매니저', pin: '8888', colorIdx: 7 },
+        { id: 'emp-09', name: '직원 9', department: '영업·마케팅', role: '팀원', pin: '9999', colorIdx: 0 },
+        { id: 'emp-10', name: '직원 10', department: '운영팀', role: '팀원', pin: '0000', colorIdx: 1 }
+      ];
+
+      const DEFAULT_SETTINGS = {
+        startTime: '09:00',
+        endTime: '18:00',
+        graceMinutes: 5,
+        breakMinutes: 60,
+        requirePin: false,
+        geoEnabled: true,
+        workplaceName: '우리 회사',
+        workplaceLat: 37.3219,
+        workplaceLng: 126.8309,
+        radiusMeters: 100,
+        sheetUrl: ''
+      };
+
+      // State
+      let state = {
+        employees: [],
+        records: [], // { id, empId, date: 'YYYY-MM-DD', status: 'working'|'away'|'off'|'leave', checkIn: 'HH:MM'|null, checkOut: 'HH:MM'|null, memo: '' }
+        settings: Object.assign({}, DEFAULT_SETTINGS),
+        geo: {
+          mode: 'real', // 'real' | 'sim-inside' | 'sim-outside'
+          status: 'idle', // 'idle' | 'loading' | 'ready' | 'error'
+          lat: null,
+          lng: null,
+          distanceMeters: null,
+          errorMessage: ''
+        },
+        ui: {
+          activeTab: 'check',
+          statusFilter: 'all',
+          deptFilter: 'all',
+          searchQuery: '',
+          recordsMonth: '',
+          recordsEmpFilter: 'all'
+        }
+      };
+
+      let hoursChartInstance = null;
+      let clockInterval = null;
+
+      // Utility functions
+      function pad2(n) {
+        return String(n).padStart(2, '0');
+      }
+
+      function getTodayStr() {
+        const d = new Date();
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+      }
+
+      function getCurrentMonthStr() {
+        const d = new Date();
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1);
+      }
+
+      function getNowTimeStr() {
+        const d = new Date();
+        return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+      }
+
+      function timeToMinutes(hhmm) {
+        if (!hhmm || typeof hhmm !== 'string' || !hhmm.includes(':')) return null;
+        const parts = hhmm.split(':');
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (Number.isNaN(h) || Number.isNaN(m)) return null;
+        return h * 60 + m;
+      }
+
+      function formatDuration(totalMinutes) {
+        if (totalMinutes == null || Number.isNaN(totalMinutes) || totalMinutes <= 0) return '0분';
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+        if (h === 0) return m + '분';
+        if (m === 0) return h + '시간';
+        return h + '시간 ' + m + '분';
+      }
+
+      function computeWorkedMinutes(rec, settings) {
+        if (!rec || rec.status === 'leave' || !rec.checkIn) return 0;
+        const startM = timeToMinutes(rec.checkIn);
+        let endM = rec.checkOut ? timeToMinutes(rec.checkOut) : null;
+        if (endM == null && (rec.status === 'working' || rec.status === 'away') && rec.date === getTodayStr()) {
+          endM = timeToMinutes(getNowTimeStr());
+        }
+        if (startM == null || endM == null) return 0;
+        let diff = endM - startM;
+        if (diff < 0) diff = 0;
+        // Deduct break only if worked more than 4 hours (240 min) and settings.breakMinutes > 0
+        const breakMin = Number(settings.breakMinutes) || 0;
+        if (diff >= 240 && breakMin > 0) {
+          diff = Math.max(0, diff - breakMin);
+        }
+        return diff;
+      }
+
+      function isLate(rec, settings) {
+        if (!rec || rec.status === 'leave' || !rec.checkIn) return false;
+        const inM = timeToMinutes(rec.checkIn);
+        const stdM = timeToMinutes(settings.startTime);
+        if (inM == null || stdM == null) return false;
+        return inM > stdM + (Number(settings.graceMinutes) || 0);
+      }
+
+      function isEarlyLeave(rec, settings) {
+        if (!rec || rec.status !== 'off' || !rec.checkOut) return false;
+        const outM = timeToMinutes(rec.checkOut);
+        const stdEndM = timeToMinutes(settings.endTime);
+        if (outM == null || stdEndM == null) return false;
+        return outM < stdEndM;
+      }
+
+      function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function getInitials(name) {
+        const clean = (name || '').trim();
+        if (!clean) return '?';
+        return clean.slice(0, 2);
+      }
+
+      // Haversine distance in meters
+      function calcDistanceMeters(lat1, lng1, lat2, lng2) {
+        const R = 6371000;
+        const toRad = function (deg) { return (deg * Math.PI) / 180; };
+        const dLat = toRad(lat2 - lat1);
+        const dLng = toRad(lng2 - lng1);
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+          Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return Math.round(R * c);
+      }
+
+      function getGeoEvaluation() {
+        const radius = Math.max(20, Number(state.settings.radiusMeters) || 100);
+        if (!state.settings.geoEnabled) {
+          return { enabled: false, ready: true, inside: true, outside: true, distance: null, radius: radius };
+        }
+        if (state.geo.status !== 'ready' || state.geo.distanceMeters == null) {
+          return { enabled: true, ready: false, inside: false, outside: false, distance: null, radius: radius };
+        }
+        const dist = state.geo.distanceMeters;
+        return {
+          enabled: true,
+          ready: true,
+          inside: dist <= radius,
+          outside: dist > radius,
+          distance: dist,
+          radius: radius
+        };
+      }
+
+      function formatDistance(meters) {
+        if (meters == null || Number.isNaN(meters)) return '-';
+        if (meters >= 1000) return (meters / 1000).toFixed(2) + 'km';
+        return meters + 'm';
+      }
+
+      function recomputeGeoDistance() {
+        if (state.geo.mode === 'sim-inside') {
+          const radius = Math.max(20, Number(state.settings.radiusMeters) || 100);
+          state.geo.status = 'ready';
+          state.geo.distanceMeters = Math.max(10, Math.round(radius * 0.25));
+          state.geo.errorMessage = '';
+          return;
+        }
+        if (state.geo.mode === 'sim-outside') {
+          const radius = Math.max(20, Number(state.settings.radiusMeters) || 100);
+          state.geo.status = 'ready';
+          state.geo.distanceMeters = radius + 250;
+          state.geo.errorMessage = '';
+          return;
+        }
+        if (state.geo.lat != null && state.geo.lng != null) {
+          state.geo.distanceMeters = calcDistanceMeters(
+            state.geo.lat,
+            state.geo.lng,
+            Number(state.settings.workplaceLat) || 37.3219,
+            Number(state.settings.workplaceLng) || 126.8309
+          );
+          state.geo.status = 'ready';
+        }
+      }
+
+      function requestRealLocation(silent) {
+        state.geo.mode = 'real';
+        if (!navigator.geolocation) {
+          state.geo.status = 'error';
+          state.geo.distanceMeters = null;
+          state.geo.errorMessage = '이 브라우저에서는 GPS 위치 기능을 지원하지 않습니다. 우측 테스트 버튼으로 체험해 보세요.';
+          renderCheckView();
+          if (!silent) showToast('GPS를 지원하지 않는 환경입니다.', 'error');
+          return;
+        }
+        state.geo.status = 'loading';
+        state.geo.errorMessage = '';
+        renderGeoStatusBar();
+        try {
+          navigator.geolocation.getCurrentPosition(
+            function (pos) {
+              state.geo.lat = pos.coords.latitude;
+              state.geo.lng = pos.coords.longitude;
+              recomputeGeoDistance();
+              renderCheckView();
+              if (!silent) showToast('현재 위치를 확인했습니다. (' + formatDistance(state.geo.distanceMeters) + ')', 'success');
+            },
+            function () {
+              state.geo.status = 'error';
+              state.geo.distanceMeters = null;
+              state.geo.errorMessage = '위치 권한이 거부되었거나 가져올 수 없습니다. GPS를 허용하거나 우측 테스트 모드를 사용하세요.';
+              renderCheckView();
+              if (!silent) showToast('위치 정보를 가져오지 못했습니다.', 'error');
+            },
+            { enableHighAccuracy: true, timeout: 6000, maximumAge: 10000 }
+          );
+        } catch (err) {
+          state.geo.status = 'error';
+          state.geo.distanceMeters = null;
+          state.geo.errorMessage = '위치 확인 중 오류가 발생했습니다. 우측 테스트 모드로 동작을 확인할 수 있습니다.';
+          renderCheckView();
+        }
+      }
+
+      function renderGeoStatusBar() {
+        const bar = document.getElementById('geo-status-bar');
+        if (!bar) return;
+        bar.classList.toggle('hidden', !state.settings.geoEnabled);
+        if (!state.settings.geoEnabled) return;
+
+        recomputeGeoDistance();
+        const ev = getGeoEvaluation();
+        const iconWrap = document.getElementById('geo-icon-wrap');
+        const titleEl = document.getElementById('geo-status-title');
+        const badgeEl = document.getElementById('geo-status-badge');
+        const descEl = document.getElementById('geo-status-desc');
+        const wpName = state.settings.workplaceName || '직장';
+
+        // Highlight active simulation button
+        document.querySelectorAll('.geo-sim-btn').forEach(function (btn) {
+          const simType = btn.getAttribute('data-geo-sim');
+          const active = (simType === 'inside' && state.geo.mode === 'sim-inside') ||
+            (simType === 'outside' && state.geo.mode === 'sim-outside');
+          btn.className = active
+            ? 'geo-sim-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-white text-indigo-700 shadow-xs transition-colors'
+            : 'geo-sim-btn px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors';
+        });
+
+        const modePrefix = state.geo.mode === 'real' ? '' : '[테스트 모드] ';
+
+        if (state.geo.status === 'loading') {
+          iconWrap.className = 'w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0';
+          titleEl.textContent = '현재 위치(GPS) 확인 중...';
+          badgeEl.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700';
+          badgeEl.textContent = '조회 중';
+          descEl.textContent = wpName + ' (반경 ' + ev.radius + 'm) 기준으로 거리를 계산하고 있습니다.';
+        } else if (ev.ready && ev.inside) {
+          iconWrap.className = 'w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0';
+          titleEl.textContent = modePrefix + wpName + ' 근처 · ' + formatDistance(ev.distance);
+          badgeEl.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700';
+          badgeEl.textContent = '출근 가능 · 퇴근 불가';
+          descEl.textContent = '허용 반경(' + ev.radius + 'm) 안에 있어 출근할 수 있습니다. 퇴근은 범위를 벗어난 후 가능합니다.';
+        } else if (ev.ready && ev.outside) {
+          iconWrap.className = 'w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0';
+          titleEl.textContent = modePrefix + wpName + ' 범위 밖 · ' + formatDistance(ev.distance);
+          badgeEl.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800';
+          badgeEl.textContent = '퇴근 가능 · 출근 불가';
+          descEl.textContent = '허용 반경(' + ev.radius + 'm) 밖이므로 퇴근할 수 있습니다. 출근은 직장 근처에서만 가능합니다.';
+        } else {
+          iconWrap.className = 'w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0';
+          titleEl.textContent = '현재 위치를 확인할 수 없습니다';
+          badgeEl.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-700';
+          badgeEl.textContent = '출·퇴근 잠김';
+          descEl.textContent = state.geo.errorMessage || '실제 GPS 확인을 누르거나 우측 테스트 버튼으로 출퇴근 제한을 체험해 보세요.';
+        }
+      }
+
+      function saveState() {
+        try {
+          const payload = {
+            employees: state.employees,
+            records: state.records,
+            settings: state.settings
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        } catch (e) {
+          // Fallback to in-memory state if storage is unavailable
+        }
+      }
+
+      function loadState() {
+        let saved = null;
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) saved = JSON.parse(raw);
+        } catch (e) {
+          saved = null;
+        }
+        if (saved && Array.isArray(saved.employees) && saved.employees.length > 0) {
+          state.employees = saved.employees;
+          state.records = Array.isArray(saved.records) ? saved.records : [];
+          state.settings = Object.assign({}, DEFAULT_SETTINGS, saved.settings || {});
+        } else {
+          state.employees = DEFAULT_EMPLOYEES.map(function (e) { return Object.assign({}, e); });
+          state.records = [];
+          state.settings = Object.assign({}, DEFAULT_SETTINGS);
+        }
+        state.ui.recordsMonth = getCurrentMonthStr();
+      }
+
+      function initPwaManifest() {
+        try {
+          const svgIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="44" fill="#4f46e5"/><circle cx="96" cy="96" r="54" fill="none" stroke="#ffffff" stroke-width="14"/><path d="M96 62v38l24 14" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+          const iconDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIcon);
+          const appleLink = document.getElementById('pwa-apple-icon');
+          if (appleLink) appleLink.href = iconDataUrl;
+
+          const manifest = {
+            name: '팀 출퇴근 체크',
+            short_name: '출퇴근체크',
+            description: '소규모 팀 GPS 출퇴근 체크 및 근태 관리',
+            start_url: '.',
+            display: 'standalone',
+            background_color: '#f8fafc',
+            theme_color: '#4f46e5',
+            icons: [{ src: iconDataUrl, sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' }]
+          };
+          const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+          const manifestLink = document.getElementById('pwa-manifest');
+          if (manifestLink) manifestLink.href = URL.createObjectURL(blob);
+        } catch (e) {
+          // Ignore if Blob URLs are restricted
+        }
+      }
+
+      function isValidSheetUrl(url) {
+        return typeof url === 'string' && /^https:\/\/script\.google\.com\//.test(url.trim());
+      }
+
+      function updateSyncIndicators(syncing, errorMsg) {
+        const badge = document.getElementById('banner-sync-badge');
+        const badgeText = document.getElementById('banner-sync-text');
+        const refreshBtn = document.getElementById('btn-sync-now');
+        const pill = document.getElementById('sheet-status-pill');
+        const hasUrl = isValidSheetUrl(state.settings.sheetUrl);
+
+        if (badge && refreshBtn) {
+          badge.classList.toggle('hidden', !hasUrl);
+          refreshBtn.classList.toggle('hidden', !hasUrl);
+          if (hasUrl && badgeText) {
+            badgeText.textContent = syncing ? '동기화 중...' : (errorMsg ? '동기화 오류' : '구글 시트 연동됨');
+          }
+        }
+        if (pill) {
+          if (!hasUrl) {
+            pill.className = 'px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500';
+            pill.textContent = '미연결';
+          } else if (syncing) {
+            pill.className = 'px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700';
+            pill.textContent = '동기화 중';
+          } else if (errorMsg) {
+            pill.className = 'px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-700';
+            pill.textContent = '연결 오류';
+          } else {
+            pill.className = 'px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700';
+            pill.textContent = '연결됨';
+          }
+        }
+      }
+
+      async function pullFromSheet(showFeedback) {
+        const url = (state.settings.sheetUrl || '').trim();
+        if (!isValidSheetUrl(url)) return false;
+        updateSyncIndicators(true, '');
+        try {
+          const res = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), { method: 'GET' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const data = await res.json();
+          if (data && data.ok) {
+            if (Array.isArray(data.employees) && data.employees.length > 0) {
+              state.employees = data.employees;
+            }
+            if (Array.isArray(data.records)) {
+              state.records = data.records;
+            }
+            saveState();
+            updateSyncIndicators(false, '');
+            renderAll();
+            if (showFeedback) showToast('구글 시트에서 최신 기록을 불러왔습니다.', 'success');
+            return true;
+          }
+          throw new Error('Invalid payload');
+        } catch (err) {
+          updateSyncIndicators(false, 'error');
+          if (showFeedback) showToast('구글 시트 연결에 실패했습니다. URL과 배포 권한(모든 사용자)을 확인하세요.', 'error');
+          return false;
+        }
+      }
+
+      async function pushToSheet(payload) {
+        const url = (state.settings.sheetUrl || '').trim();
+        if (!isValidSheetUrl(url)) return;
+        updateSyncIndicators(true, '');
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          updateSyncIndicators(false, '');
+        } catch (err) {
+          updateSyncIndicators(false, 'error');
+          showToast('시트 저장 실패 (현재 기기에는 임시 저장됨)', 'error');
+        }
+      }
+
+      const APPS_SCRIPT_CODE = [
+        "function doGet(e) {",
+        "  var ss = SpreadsheetApp.getActiveSpreadsheet();",
+        "  var empSheet = ss.getSheetByName('Employees') || ss.insertSheet('Employees');",
+        "  var recSheet = ss.getSheetByName('Records') || ss.insertSheet('Records');",
+        "  if (empSheet.getLastRow() === 0) {",
+        "    empSheet.appendRow(['id', 'name', 'department', 'role', 'pin', 'colorIdx']);",
+        "  }",
+        "  if (recSheet.getLastRow() === 0) {",
+        "    recSheet.appendRow(['id', 'empId', 'date', 'status', 'checkIn', 'checkOut', 'memo']);",
+        "  }",
+        "  var employees = sheetToObjects_(empSheet);",
+        "  var records = sheetToObjects_(recSheet);",
+        "  return jsonOut_({ ok: true, employees: employees, records: records });",
+        "}",
+        "",
+        "function doPost(e) {",
+        "  var body = JSON.parse(e.postData.contents || '{}');",
+        "  var ss = SpreadsheetApp.getActiveSpreadsheet();",
+        "  var empSheet = ss.getSheetByName('Employees') || ss.insertSheet('Employees');",
+        "  var recSheet = ss.getSheetByName('Records') || ss.insertSheet('Records');",
+        "  if (body.action === 'upsertRecord' && body.record) {",
+        "    upsertRow_(recSheet, ['id', 'empId', 'date', 'status', 'checkIn', 'checkOut', 'memo'], body.record);",
+        "  } else if (body.action === 'deleteRecord' && body.recordId) {",
+        "    deleteRowById_(recSheet, body.recordId);",
+        "  } else if (body.action === 'syncEmployees' && Array.isArray(body.employees)) {",
+        "    empSheet.clearContents();",
+        "    empSheet.appendRow(['id', 'name', 'department', 'role', 'pin', 'colorIdx']);",
+        "    body.employees.forEach(function(emp) {",
+        "      empSheet.appendRow([emp.id, emp.name, emp.department, emp.role, emp.pin || '', emp.colorIdx || 0]);",
+        "    });",
+        "  }",
+        "  return jsonOut_({ ok: true });",
+        "}",
+        "",
+        "function sheetToObjects_(sheet) {",
+        "  var values = sheet.getDataRange().getValues();",
+        "  if (values.length < 2) return [];",
+        "  var headers = values[0];",
+        "  return values.slice(1).map(function(row) {",
+        "    var obj = {};",
+        "    headers.forEach(function(h, idx) {",
+        "      var v = row[idx];",
+        "      obj[h] = (v === '' ? null : String(v));",
+        "      if (h === 'colorIdx') obj[h] = Number(v) || 0;",
+        "    });",
+        "    return obj;",
+        "  });",
+        "}",
+        "",
+        "function upsertRow_(sheet, headers, item) {",
+        "  if (sheet.getLastRow() === 0) sheet.appendRow(headers);",
+        "  var values = sheet.getDataRange().getValues();",
+        "  var rowIdx = -1;",
+        "  for (var i = 1; i < values.length; i++) {",
+        "    if (String(values[i][0]) === String(item.id)) { rowIdx = i + 1; break; }",
+        "  }",
+        "  var row = headers.map(function(h) { return item[h] == null ? '' : item[h]; });",
+        "  if (rowIdx > 0) sheet.getRange(rowIdx, 1, 1, headers.length).setValues([row]);",
+        "  else sheet.appendRow(row);",
+        "}",
+        "",
+        "function deleteRowById_(sheet, id) {",
+        "  var values = sheet.getDataRange().getValues();",
+        "  for (var i = 1; i < values.length; i++) {",
+        "    if (String(values[i][0]) === String(id)) { sheet.deleteRow(i + 1); break; }",
+        "  }",
+        "}",
+        "",
+        "function jsonOut_(obj) {",
+        "  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);",
+        "}"
+      ].join("\n");
+
+      function openAppsScriptModal() {
+        openModal('구글 시트 연동 코드 (Apps Script)',
+          '<div class="space-y-3">' +
+            '<ol class="text-xs text-slate-600 space-y-1 list-decimal pl-4 leading-relaxed">' +
+              '<li>새 <strong>구글 스프레드시트</strong>를 열고 상단 <strong>확장 프로그램 → Apps Script</strong> 클릭</li>' +
+              '<li>기존 코드를 모두 지우고 아래 코드를 붙여넣기 후 저장</li>' +
+              '<li>우측 상단 <strong>배포 → 새 배포 → 유형: 웹 앱</strong> 선택</li>' +
+              '<li>액세스 권한을 <strong>모든 사용자(Anyone)</strong>로 설정 후 배포</li>' +
+              '<li>생성된 <code>https://script.google.com/.../exec</code> 주소를 설정에 입력</li>' +
+            '</ol>' +
+            '<textarea id="apps-script-textarea" readonly rows="8" class="w-full p-3 bg-slate-900 text-emerald-300 font-mono text-[11px] rounded-xl focus:outline-none">' + escapeHtml(APPS_SCRIPT_CODE) + '</textarea>' +
+            '<div class="flex gap-2">' +
+              '<button type="button" id="btn-copy-apps-script" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">코드 전체 복사</button>' +
+              '<button type="button" id="btn-close-apps-script" class="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">닫기</button>' +
+            '</div>' +
+          '</div>'
+        );
+        document.getElementById('btn-close-apps-script').addEventListener('click', closeModal);
+        document.getElementById('btn-copy-apps-script').addEventListener('click', function () {
+          const ta = document.getElementById('apps-script-textarea');
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(APPS_SCRIPT_CODE).then(function () {
+              showToast('Apps Script 코드가 복사되었습니다.', 'success');
+            }).catch(function () {
+              ta.select();
+              document.execCommand('copy');
+              showToast('코드가 복사되었습니다.', 'success');
+            });
+          } else {
+            ta.select();
+            document.execCommand('copy');
+            showToast('코드가 복사되었습니다.', 'success');
+          }
+        });
+      }
+
+      function openInstallGuideModal() {
+        openModal('휴대폰 앱 설치 (홈 화면 추가) 안내',
+          '<div class="space-y-3.5 text-xs text-slate-600 leading-relaxed">' +
+            '<div class="p-3 rounded-xl bg-indigo-50 text-indigo-900">' +
+              '<strong>먼저 무료 웹 호스팅에 올려주세요</strong><br />' +
+              '이 HTML 파일을 <a href="https://pages.github.com/" target="_blank" class="underline font-semibold">GitHub Pages</a>나 <a href="https://app.netlify.com/drop" target="_blank" class="underline font-semibold">Netlify Drop</a>에 올리면 <code>https://</code> 주소가 바로 생성됩니다.' +
+            '</div>' +
+            '<div class="space-y-1.5">' +
+              '<div class="font-bold text-slate-900">아이폰 (Safari)</div>' +
+              '<p>공유된 <code>https://</code> 링크 접속 → 하단 <strong>공유 버튼(□↑)</strong> → <strong>홈 화면에 추가</strong> 선택</p>' +
+            '</div>' +
+            '<div class="space-y-1.5">' +
+              '<div class="font-bold text-slate-900">안드로이드 (Chrome)</div>' +
+              '<p>공유된 <code>https://</code> 링크 접속 → 우측 상단 <strong>메뉴(⋮)</strong> → <strong>홈 화면에 추가</strong> 또는 <strong>앱 설치</strong> 선택</p>' +
+            '</div>' +
+            '<button type="button" id="btn-close-install-guide" class="w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-semibold">확인</button>' +
+          '</div>'
+        );
+        document.getElementById('btn-close-install-guide').addEventListener('click', closeModal);
+      }
+
+      function getTodayRecord(empId) {
+        const today = getTodayStr();
+        return state.records.find(function (r) { return r.empId === empId && r.date === today; }) || null;
+      }
+
+      function getEmployeeById(empId) {
+        return state.employees.find(function (e) { return e.id === empId; }) || null;
+      }
+
+      function showToast(message, type) {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const colors = {
+          success: 'bg-slate-900 text-white border-slate-700',
+          error: 'bg-rose-600 text-white border-rose-500',
+          info: 'bg-indigo-600 text-white border-indigo-500'
+        };
+        const el = document.createElement('div');
+        el.className = 'toast-enter pointer-events-auto px-4 py-2.5 rounded-xl shadow-lg border text-xs sm:text-sm font-medium ' + (colors[type] || colors.success);
+        el.textContent = message;
+        container.appendChild(el);
+        setTimeout(function () {
+          el.style.opacity = '0';
+          el.style.transition = 'opacity 0.2s ease';
+          setTimeout(function () { el.remove(); }, 220);
+        }, 2400);
+      }
+
+      // Modal Helpers
+      function openModal(title, bodyHtml) {
+        const overlay = document.getElementById('modal-overlay');
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('modal-body').innerHTML = bodyHtml;
+        overlay.classList.remove('hidden');
+        if (window.lucide) window.lucide.createIcons();
+      }
+
+      function closeModal() {
+        const overlay = document.getElementById('modal-overlay');
+        overlay.classList.add('hidden');
+        document.getElementById('modal-body').innerHTML = '';
+      }
+
+      // Clock
+      function updateLiveClock() {
+        const now = new Date();
+        const days = ['일', '월', '화', '수', '목', '금', '토'];
+        const dateStr = now.getFullYear() + '년 ' + (now.getMonth() + 1) + '월 ' + now.getDate() + '일 (' + days[now.getDay()] + ')';
+        const timeStr = pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + ':' + pad2(now.getSeconds());
+        const dateEl = document.getElementById('live-date-label');
+        const clockEl = document.getElementById('live-clock');
+        if (dateEl) dateEl.textContent = dateStr;
+        if (clockEl) clockEl.textContent = timeStr;
+      }
+
+      // Render Navigation
+      function renderTabs() {
+        const tabs = document.querySelectorAll('.nav-tab');
+        tabs.forEach(function (btn) {
+          const isActive = btn.getAttribute('data-tab') === state.ui.activeTab;
+          if (isActive) {
+            btn.className = 'nav-tab px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 bg-white text-indigo-600 shadow-xs';
+          } else {
+            btn.className = 'nav-tab px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900';
+          }
+        });
+
+        document.getElementById('view-check').classList.toggle('hidden', state.ui.activeTab !== 'check');
+        document.getElementById('view-records').classList.toggle('hidden', state.ui.activeTab !== 'records');
+        document.getElementById('view-team').classList.toggle('hidden', state.ui.activeTab !== 'team');
+      }
+
+      // Render Tab 1: Check-in Board
+      function renderCheckView() {
+        document.getElementById('banner-work-hours').textContent = state.settings.startTime + ' ~ ' + state.settings.endTime;
+        document.getElementById('banner-pin-badge').classList.toggle('hidden', !state.settings.requirePin);
+        renderGeoStatusBar();
+
+        // Compute KPIs
+        let workingCount = 0;
+        let beforeCount = 0;
+        let doneCount = 0;
+        state.employees.forEach(function (emp) {
+          const rec = getTodayRecord(emp.id);
+          if (!rec) {
+            beforeCount++;
+          } else if (rec.status === 'working' || rec.status === 'away') {
+            workingCount++;
+          } else {
+            doneCount++;
+          }
+        });
+        document.getElementById('kpi-total').textContent = String(state.employees.length);
+        document.getElementById('kpi-working').textContent = String(workingCount);
+        document.getElementById('kpi-before').textContent = String(beforeCount);
+        document.getElementById('kpi-done').textContent = String(doneCount);
+
+        // Populate department filter
+        const deptSelect = document.getElementById('dept-filter');
+        const depts = Array.from(new Set(state.employees.map(function (e) { return e.department; }).filter(Boolean)));
+        const prevDept = state.ui.deptFilter;
+        deptSelect.innerHTML = '<option value="all">전체 부서</option>' + depts.map(function (d) {
+          return '<option value="' + escapeHtml(d) + '">' + escapeHtml(d) + '</option>';
+        }).join('');
+        if (depts.includes(prevDept)) {
+          deptSelect.value = prevDept;
+        } else {
+          state.ui.deptFilter = 'all';
+          deptSelect.value = 'all';
+        }
+
+        // Update status filter pill styles
+        document.querySelectorAll('.status-filter-btn').forEach(function (btn) {
+          const active = btn.getAttribute('data-status-filter') === state.ui.statusFilter;
+          btn.className = active
+            ? 'status-filter-btn px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap bg-indigo-600 text-white'
+            : 'status-filter-btn px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap bg-white border border-slate-200 text-slate-600 hover:bg-slate-50';
+        });
+
+        // Filter employees
+        const query = state.ui.searchQuery.trim().toLowerCase();
+        const filtered = state.employees.filter(function (emp) {
+          const rec = getTodayRecord(emp.id);
+          const status = rec ? rec.status : 'before';
+          if (state.ui.statusFilter === 'working' && status !== 'working' && status !== 'away') return false;
+          if (state.ui.statusFilter === 'before' && status !== 'before') return false;
+          if (state.ui.statusFilter === 'off' && status !== 'off') return false;
+          if (state.ui.statusFilter === 'leave' && status !== 'leave') return false;
+          if (state.ui.deptFilter !== 'all' && emp.department !== state.ui.deptFilter) return false;
+          if (query) {
+            const hay = (emp.name + ' ' + emp.department + ' ' + emp.role).toLowerCase();
+            if (!hay.includes(query)) return false;
+          }
+          return true;
+        });
+
+        const grid = document.getElementById('employee-grid');
+        const emptyEl = document.getElementById('employee-empty-state');
+
+        if (filtered.length === 0) {
+          grid.innerHTML = '';
+          emptyEl.classList.remove('hidden');
+          return;
+        }
+        emptyEl.classList.add('hidden');
+
+        grid.innerHTML = filtered.map(function (emp) {
+          const rec = getTodayRecord(emp.id);
+          const status = rec ? rec.status : 'before';
+          const colorCls = AVATAR_COLORS[emp.colorIdx % AVATAR_COLORS.length];
+          const late = rec ? isLate(rec, state.settings) : false;
+          const workedMin = rec ? computeWorkedMinutes(rec, state.settings) : 0;
+
+          let badgeHtml = '';
+          let cardRing = 'border-slate-200';
+          if (status === 'working') {
+            badgeHtml = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>근무 중</span>';
+            cardRing = 'border-emerald-200 ring-1 ring-emerald-100';
+          } else if (status === 'away') {
+            badgeHtml = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>외근·휴식</span>';
+            cardRing = 'border-amber-200 ring-1 ring-amber-100';
+          } else if (status === 'off') {
+            badgeHtml = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">퇴근 완료</span>';
+          } else if (status === 'leave') {
+            badgeHtml = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">휴가·연차</span>';
+          } else {
+            badgeHtml = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">출근 전</span>';
+          }
+
+          let lateBadge = late
+            ? '<span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-700">지각</span>'
+            : '';
+
+          let timeInfoHtml = '';
+          if (status === 'leave') {
+            timeInfoHtml = '<div class="text-xs text-slate-500 py-2">오늘 휴가/연차로 등록됨' + (rec.memo ? ' · ' + escapeHtml(rec.memo) : '') + '</div>';
+          } else if (rec) {
+            timeInfoHtml =
+              '<div class="grid grid-cols-3 gap-2 bg-slate-50 rounded-xl p-2.5 text-center">' +
+                '<div><div class="text-[11px] text-slate-400">출근</div><div class="text-sm font-bold text-slate-800 tabular-nums">' + (rec.checkIn || '-') + '</div></div>' +
+                '<div><div class="text-[11px] text-slate-400">퇴근</div><div class="text-sm font-bold text-slate-800 tabular-nums">' + (rec.checkOut || '-') + '</div></div>' +
+                '<div><div class="text-[11px] text-slate-400">근무</div><div class="text-sm font-bold text-indigo-600 tabular-nums">' + (workedMin > 0 ? formatDuration(workedMin) : '진행 중') + '</div></div>' +
+              '</div>';
+          } else {
+            timeInfoHtml =
+              '<div class="grid grid-cols-3 gap-2 bg-slate-50 rounded-xl p-2.5 text-center">' +
+                '<div><div class="text-[11px] text-slate-400">출근</div><div class="text-sm font-semibold text-slate-400 tabular-nums">--:--</div></div>' +
+                '<div><div class="text-[11px] text-slate-400">퇴근</div><div class="text-sm font-semibold text-slate-400 tabular-nums">--:--</div></div>' +
+                '<div><div class="text-[11px] text-slate-400">근무</div><div class="text-sm font-semibold text-slate-400 tabular-nums">-</div></div>' +
+              '</div>';
+          }
+
+          const geoEval = getGeoEvaluation();
+          const canCheckIn = !geoEval.enabled || (geoEval.ready && geoEval.inside);
+          const canCheckOut = !geoEval.enabled || (geoEval.ready && geoEval.outside);
+
+          let actionsHtml = '';
+          if (status === 'before') {
+            const inCls = canCheckIn
+              ? 'col-span-2 py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 shadow-xs'
+              : 'col-span-2 py-2.5 px-3 rounded-xl bg-slate-200 text-slate-400 text-xs font-semibold cursor-not-allowed flex items-center justify-center gap-1.5';
+            const inLabel = canCheckIn ? '출근하기' : (geoEval.ready ? '직장 근처에서 출근' : '위치 확인 필요');
+            actionsHtml =
+              '<div class="grid grid-cols-3 gap-2">' +
+                '<button type="button" data-action="check-in" data-emp-id="' + emp.id + '" class="' + inCls + '" title="' + (canCheckIn ? '출근 체크' : '직장 허용 반경 내에서만 출근할 수 있습니다.') + '">' +
+                  '<i data-lucide="' + (canCheckIn ? 'log-in' : 'map-pin-off') + '" class="w-4 h-4 shrink-0"></i><span class="truncate">' + inLabel + '</span>' +
+                '</button>' +
+                '<button type="button" data-action="mark-leave" data-emp-id="' + emp.id + '" class="py-2.5 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors">휴가</button>' +
+              '</div>';
+          } else if (status === 'working') {
+            const outCls = canCheckOut
+              ? 'col-span-2 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-1.5'
+              : 'col-span-2 py-2.5 px-3 rounded-xl bg-slate-200 text-slate-400 text-xs font-semibold cursor-not-allowed flex items-center justify-center gap-1.5';
+            const outLabel = canCheckOut ? '퇴근하기' : (geoEval.ready ? '범위 밖에서 퇴근' : '위치 확인 필요');
+            actionsHtml =
+              '<div class="grid grid-cols-3 gap-2">' +
+                '<button type="button" data-action="check-out" data-emp-id="' + emp.id + '" class="' + outCls + '" title="' + (canCheckOut ? '퇴근 체크' : '직장 허용 반경을 벗어난 후에만 퇴근할 수 있습니다.') + '">' +
+                  '<i data-lucide="' + (canCheckOut ? 'log-out' : 'lock') + '" class="w-4 h-4 shrink-0"></i><span class="truncate">' + outLabel + '</span>' +
+                '</button>' +
+                '<button type="button" data-action="toggle-away" data-emp-id="' + emp.id + '" class="py-2.5 px-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-semibold transition-colors">외근·휴식</button>' +
+              '</div>';
+          } else if (status === 'away') {
+            const outAwayCls = canCheckOut
+              ? 'py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold transition-colors'
+              : 'py-2.5 px-3 rounded-xl bg-slate-200 text-slate-400 text-xs font-semibold cursor-not-allowed';
+            const outAwayLabel = canCheckOut ? '퇴근하기' : (geoEval.ready ? '범위 밖에서 퇴근' : '위치 확인 필요');
+            actionsHtml =
+              '<div class="grid grid-cols-2 gap-2">' +
+                '<button type="button" data-action="toggle-away" data-emp-id="' + emp.id + '" class="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors">복귀하기</button>' +
+                '<button type="button" data-action="check-out" data-emp-id="' + emp.id + '" class="' + outAwayCls + '">' + outAwayLabel + '</button>' +
+              '</div>';
+          } else {
+            actionsHtml =
+              '<div class="flex items-center gap-2">' +
+                '<button type="button" data-action="edit-today" data-emp-id="' + emp.id + '" class="flex-1 py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5">' +
+                  '<i data-lucide="pencil" class="w-3.5 h-3.5"></i><span>오늘 기록 수정</span>' +
+                '</button>' +
+              '</div>';
+          }
+
+          return (
+            '<div class="bg-white rounded-2xl border ' + cardRing + ' p-4 flex flex-col justify-between gap-3.5 shadow-xs hover:shadow-sm transition-shadow">' +
+              '<div class="flex items-start justify-between gap-2">' +
+                '<div class="flex items-center gap-3 min-w-0">' +
+                  '<div class="w-10 h-10 rounded-xl ' + colorCls + ' font-bold text-sm flex items-center justify-center shrink-0">' + escapeHtml(getInitials(emp.name)) + '</div>' +
+                  '<div class="min-w-0">' +
+                    '<div class="flex items-center gap-1">' +
+                      '<h3 class="font-bold text-slate-900 text-sm sm:text-base truncate">' + escapeHtml(emp.name) + '</h3>' +
+                      lateBadge +
+                    '</div>' +
+                    '<p class="text-xs text-slate-500 truncate">' + escapeHtml(emp.department) + ' · ' + escapeHtml(emp.role) + '</p>' +
+                  '</div>' +
+                '</div>' +
+                '<div class="shrink-0">' + badgeHtml + '</div>' +
+              '</div>' +
+              timeInfoHtml +
+              actionsHtml +
+            '</div>'
+          );
+        }).join('');
+
+        if (window.lucide) window.lucide.createIcons();
+      }
+
+      // Render Tab 2: Records & Analytics
+      function renderRecordsView() {
+        const monthInput = document.getElementById('records-month');
+        if (!state.ui.recordsMonth) state.ui.recordsMonth = getCurrentMonthStr();
+        monthInput.value = state.ui.recordsMonth;
+        document.getElementById('chart-month-badge').textContent = state.ui.recordsMonth;
+
+        // Populate employee filter
+        const empFilter = document.getElementById('records-emp-filter');
+        empFilter.innerHTML = '<option value="all">전체 직원</option>' + state.employees.map(function (e) {
+          return '<option value="' + e.id + '">' + escapeHtml(e.name) + ' (' + escapeHtml(e.department) + ')</option>';
+        }).join('');
+        if (state.ui.recordsEmpFilter !== 'all' && !getEmployeeById(state.ui.recordsEmpFilter)) {
+          state.ui.recordsEmpFilter = 'all';
+        }
+        empFilter.value = state.ui.recordsEmpFilter;
+
+        // Filter records by month
+        const monthRecords = state.records.filter(function (r) {
+          return r.date && r.date.startsWith(state.ui.recordsMonth);
+        });
+
+        // Summary per employee
+        const summaryRows = state.employees.map(function (emp) {
+          const empRecs = monthRecords.filter(function (r) { return r.empId === emp.id; });
+          let workDays = 0;
+          let lateCount = 0;
+          let earlyCount = 0;
+          let leaveDays = 0;
+          let totalMin = 0;
+          empRecs.forEach(function (r) {
+            if (r.status === 'leave') {
+              leaveDays++;
+            } else {
+              workDays++;
+              if (isLate(r, state.settings)) lateCount++;
+              if (isEarlyLeave(r, state.settings)) earlyCount++;
+              totalMin += computeWorkedMinutes(r, state.settings);
+            }
+          });
+          return { emp: emp, workDays: workDays, lateCount: lateCount, earlyCount: earlyCount, leaveDays: leaveDays, totalMin: totalMin };
+        });
+
+        const summaryBody = document.getElementById('monthly-summary-body');
+        summaryBody.innerHTML = summaryRows.map(function (row) {
+          return (
+            '<tr class="hover:bg-slate-50/70">' +
+              '<td class="py-3 px-4 font-semibold text-slate-900">' + escapeHtml(row.emp.name) + ' <span class="text-xs font-normal text-slate-400">' + escapeHtml(row.emp.department) + '</span></td>' +
+              '<td class="py-3 px-3 text-right tabular-nums text-slate-700">' + row.workDays + '일</td>' +
+              '<td class="py-3 px-3 text-right tabular-nums ' + (row.lateCount > 0 ? 'text-rose-600 font-semibold' : 'text-slate-400') + '">' + row.lateCount + '회</td>' +
+              '<td class="py-3 px-3 text-right tabular-nums ' + (row.earlyCount > 0 ? 'text-amber-600 font-semibold' : 'text-slate-400') + '">' + row.earlyCount + '회</td>' +
+              '<td class="py-3 px-3 text-right tabular-nums text-slate-700">' + row.leaveDays + '일</td>' +
+              '<td class="py-3 px-4 text-right tabular-nums font-bold text-indigo-700">' + formatDuration(row.totalMin) + '</td>' +
+            '</tr>'
+          );
+        }).join('');
+
+        // Render Chart.js
+        renderHoursChart(summaryRows);
+
+        // Daily Logs Table
+        const filteredLogs = monthRecords
+          .filter(function (r) {
+            return state.ui.recordsEmpFilter === 'all' || r.empId === state.ui.recordsEmpFilter;
+          })
+          .sort(function (a, b) {
+            if (a.date !== b.date) return b.date.localeCompare(a.date);
+            return (b.checkIn || '').localeCompare(a.checkIn || '');
+          });
+
+        document.getElementById('logs-count-badge').textContent = filteredLogs.length + '건';
+        const logsBody = document.getElementById('daily-logs-body');
+
+        if (filteredLogs.length === 0) {
+          logsBody.innerHTML = '<tr><td colspan="8" class="py-10 text-center text-sm text-slate-400">선택한 기간에 기록된 출퇴근 내역이 없습니다.</td></tr>';
+        } else {
+          const statusMap = {
+            working: '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700">근무 중</span>',
+            away: '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">외근·휴식</span>',
+            off: '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700">퇴근</span>',
+            leave: '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700">휴가</span>'
+          };
+          logsBody.innerHTML = filteredLogs.map(function (r) {
+            const emp = getEmployeeById(r.empId);
+            const empName = emp ? emp.name : '(삭제된 직원)';
+            const worked = computeWorkedMinutes(r, state.settings);
+            const lateTag = isLate(r, state.settings) ? ' <span class="text-[11px] font-semibold text-rose-600">(지각)</span>' : '';
+            return (
+              '<tr class="hover:bg-slate-50/70">' +
+                '<td class="py-2.5 px-4 tabular-nums text-slate-700 font-medium whitespace-nowrap">' + escapeHtml(r.date) + '</td>' +
+                '<td class="py-2.5 px-3 font-semibold text-slate-900 whitespace-nowrap">' + escapeHtml(empName) + '</td>' +
+                '<td class="py-2.5 px-3 whitespace-nowrap">' + (statusMap[r.status] || escapeHtml(r.status)) + lateTag + '</td>' +
+                '<td class="py-2.5 px-3 tabular-nums text-slate-700">' + (r.checkIn || '-') + '</td>' +
+                '<td class="py-2.5 px-3 tabular-nums text-slate-700">' + (r.checkOut || '-') + '</td>' +
+                '<td class="py-2.5 px-3 text-right tabular-nums font-semibold text-slate-800 whitespace-nowrap">' + (r.status === 'leave' ? '-' : formatDuration(worked)) + '</td>' +
+                '<td class="py-2.5 px-3 text-xs text-slate-500 max-w-[160px] truncate">' + escapeHtml(r.memo || '-') + '</td>' +
+                '<td class="py-2.5 px-4 text-right whitespace-nowrap">' +
+                  '<button type="button" data-record-action="edit" data-record-id="' + r.id + '" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 mr-2.5">수정</button>' +
+                  '<button type="button" data-record-action="delete" data-record-id="' + r.id + '" class="text-xs font-semibold text-rose-600 hover:text-rose-800">삭제</button>' +
+                '</td>' +
+              '</tr>'
+            );
+          }).join('');
+        }
+      }
+
+      function renderHoursChart(summaryRows) {
+        const canvas = document.getElementById('hours-chart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        const labels = summaryRows.map(function (r) { return r.emp.name; });
+        const dataHours = summaryRows.map(function (r) { return Number((r.totalMin / 60).toFixed(1)); });
+
+        if (hoursChartInstance) {
+          hoursChartInstance.destroy();
+          hoursChartInstance = null;
+        }
+        hoursChartInstance = new Chart(canvas.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: '누적 근무시간 (시간)',
+              data: dataHours,
+              backgroundColor: 'rgba(79, 70, 229, 0.82)',
+              hoverBackgroundColor: 'rgba(67, 56, 202, 0.95)',
+              borderRadius: 8,
+              maxBarThickness: 36
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function (ctx) { return ' ' + ctx.parsed.y + '시간'; }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                suggestedMax: 8,
+                grid: { color: '#f1f5f9' },
+                ticks: { color: '#64748b', font: { size: 11 } }
+              },
+              x: {
+                grid: { display: false },
+                ticks: { color: '#334155', font: { size: 11, weight: '600' } }
+              }
+            }
+          }
+        });
+      }
+
+      // Render Tab 3: Team & Settings
+      function renderTeamView() {
+        const listEl = document.getElementById('team-list');
+        if (state.employees.length === 0) {
+          listEl.innerHTML = '<div class="p-8 text-center text-sm text-slate-400">등록된 직원이 없습니다. 상단의 직원 추가 버튼을 눌러주세요.</div>';
+        } else {
+          listEl.innerHTML = state.employees.map(function (emp) {
+            const colorCls = AVATAR_COLORS[emp.colorIdx % AVATAR_COLORS.length];
+            return (
+              '<div class="px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/70">' +
+                '<div class="flex items-center gap-3 min-w-0">' +
+                  '<div class="w-9 h-9 rounded-xl ' + colorCls + ' font-bold text-xs flex items-center justify-center shrink-0">' + escapeHtml(getInitials(emp.name)) + '</div>' +
+                  '<div class="min-w-0">' +
+                    '<div class="font-bold text-sm text-slate-900 truncate">' + escapeHtml(emp.name) + '</div>' +
+                    '<div class="text-xs text-slate-500 truncate">' + escapeHtml(emp.department) + ' · ' + escapeHtml(emp.role) + ' · PIN ' + escapeHtml(emp.pin || '미설정') + '</div>' +
+                  '</div>' +
+                '</div>' +
+                '<div class="flex items-center gap-1.5 shrink-0">' +
+                  '<button type="button" data-emp-action="edit" data-emp-id="' + emp.id + '" class="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors">수정</button>' +
+                  '<button type="button" data-emp-action="delete" data-emp-id="' + emp.id + '" class="px-2.5 py-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 text-xs font-semibold text-rose-600 transition-colors">삭제</button>' +
+                '</div>' +
+              '</div>'
+            );
+          }).join('');
+        }
+
+        // Populate settings form
+        document.getElementById('set-start-time').value = state.settings.startTime;
+        document.getElementById('set-end-time').value = state.settings.endTime;
+        document.getElementById('set-grace-min').value = String(state.settings.graceMinutes);
+        document.getElementById('set-break-min').value = String(state.settings.breakMinutes);
+        document.getElementById('set-require-pin').checked = Boolean(state.settings.requirePin);
+        document.getElementById('set-geo-enabled').checked = Boolean(state.settings.geoEnabled);
+        document.getElementById('set-workplace-name').value = state.settings.workplaceName || '우리 회사';
+        document.getElementById('set-geo-radius').value = String(state.settings.radiusMeters || 100);
+        document.getElementById('set-workplace-lat').value = String(state.settings.workplaceLat != null ? state.settings.workplaceLat : 37.3219);
+        document.getElementById('set-workplace-lng').value = String(state.settings.workplaceLng != null ? state.settings.workplaceLng : 126.8309);
+        document.getElementById('set-sheet-url').value = state.settings.sheetUrl || '';
+        updateSyncIndicators(false, '');
+      }
+
+      function renderAll() {
+        renderTabs();
+        if (state.ui.activeTab === 'check') renderCheckView();
+        else if (state.ui.activeTab === 'records') renderRecordsView();
+        else if (state.ui.activeTab === 'team') renderTeamView();
+      }
+
+      // PIN Guard Wrapper
+      function runWithPinCheck(emp, callback) {
+        if (!state.settings.requirePin || !emp.pin) {
+          callback();
+          return;
+        }
+        openModal(emp.name + ' · PIN 확인',
+          '<form id="pin-verify-form" class="space-y-4">' +
+            '<p class="text-xs text-slate-500">출퇴근 체크를 위해 4자리 PIN 번호를 입력하세요.</p>' +
+            '<input id="pin-input" type="password" inputmode="numeric" maxlength="4" placeholder="PIN 4자리" class="w-full px-4 py-3 text-center text-xl tracking-[0.5em] font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/40" required autofocus />' +
+            '<p id="pin-error" class="hidden text-xs text-rose-600 font-medium text-center">PIN 번호가 일치하지 않습니다.</p>' +
+            '<div class="flex gap-2">' +
+              '<button type="button" id="pin-cancel-btn" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">취소</button>' +
+              '<button type="submit" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">확인</button>' +
+            '</div>' +
+          '</form>'
+        );
+        document.getElementById('pin-cancel-btn').addEventListener('click', closeModal);
+        document.getElementById('pin-verify-form').addEventListener('submit', function (e) {
+          e.preventDefault();
+          const val = document.getElementById('pin-input').value.trim();
+          if (val === String(emp.pin)) {
+            closeModal();
+            callback();
+          } else {
+            document.getElementById('pin-error').classList.remove('hidden');
+          }
+        });
+      }
+
+      // Attendance Actions
+      function handleCheckIn(empId) {
+        const emp = getEmployeeById(empId);
+        if (!emp) return;
+        const geoEval = getGeoEvaluation();
+        if (geoEval.enabled) {
+          if (!geoEval.ready) {
+            showToast('먼저 상단에서 현재 위치를 확인해 주세요.', 'error');
+            return;
+          }
+          if (!geoEval.inside) {
+            showToast('직장 반경 ' + geoEval.radius + 'm 이내에서만 출근할 수 있습니다. (현재 ' + formatDistance(geoEval.distance) + ')', 'error');
+            return;
+          }
+        }
+        runWithPinCheck(emp, function () {
+          const today = getTodayStr();
+          const nowTime = getNowTimeStr();
+          const existing = getTodayRecord(empId);
+          if (existing) {
+            existing.status = 'working';
+            existing.checkIn = existing.checkIn || nowTime;
+          } else {
+            state.records.push({
+              id: 'rec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+              empId: empId,
+              date: today,
+              status: 'working',
+              checkIn: nowTime,
+              checkOut: null,
+              memo: ''
+            });
+          }
+          saveState();
+          const savedCi = getTodayRecord(empId);
+          if (savedCi) pushToSheet({ action: 'upsertRecord', record: savedCi });
+          renderCheckView();
+          const distNote = geoEval.enabled && geoEval.distance != null ? ' (' + formatDistance(geoEval.distance) + ')' : '';
+          showToast(emp.name + '님 ' + nowTime + ' 출근 완료' + distNote, 'success');
+        });
+      }
+
+      function handleCheckOut(empId) {
+        const emp = getEmployeeById(empId);
+        const rec = getTodayRecord(empId);
+        if (!emp || !rec) return;
+        const geoEval = getGeoEvaluation();
+        if (geoEval.enabled) {
+          if (!geoEval.ready) {
+            showToast('먼저 상단에서 현재 위치를 확인해 주세요.', 'error');
+            return;
+          }
+          if (!geoEval.outside) {
+            showToast('직장 반경 ' + geoEval.radius + 'm를 벗어난 후에만 퇴근할 수 있습니다. (현재 ' + formatDistance(geoEval.distance) + ')', 'error');
+            return;
+          }
+        }
+        runWithPinCheck(emp, function () {
+          const nowTime = getNowTimeStr();
+          rec.status = 'off';
+          rec.checkOut = nowTime;
+          saveState();
+          pushToSheet({ action: 'upsertRecord', record: rec });
+          renderCheckView();
+          const distNote = geoEval.enabled && geoEval.distance != null ? ' (' + formatDistance(geoEval.distance) + ')' : '';
+          showToast(emp.name + '님 ' + nowTime + ' 퇴근 완료' + distNote, 'info');
+        });
+      }
+
+      function handleToggleAway(empId) {
+        const emp = getEmployeeById(empId);
+        const rec = getTodayRecord(empId);
+        if (!emp || !rec) return;
+        rec.status = rec.status === 'away' ? 'working' : 'away';
+        saveState();
+        pushToSheet({ action: 'upsertRecord', record: rec });
+        renderCheckView();
+        showToast(emp.name + '님 ' + (rec.status === 'away' ? '외근·휴식 상태로 변경' : '근무 복귀 완료'), 'info');
+      }
+
+      function handleMarkLeave(empId) {
+        const emp = getEmployeeById(empId);
+        if (!emp) return;
+        openModal(emp.name + ' · 휴가/연차 등록',
+          '<form id="leave-form" class="space-y-4">' +
+            '<div>' +
+              '<label class="block text-xs font-semibold text-slate-600 mb-1">사유 / 메모 (선택)</label>' +
+              '<input id="leave-memo" type="text" placeholder="예: 연차, 반차, 병가" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />' +
+            '</div>' +
+            '<div class="flex gap-2">' +
+              '<button type="button" id="leave-cancel-btn" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">취소</button>' +
+              '<button type="submit" class="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold">휴가 등록</button>' +
+            '</div>' +
+          '</form>'
+        );
+        document.getElementById('leave-cancel-btn').addEventListener('click', closeModal);
+        document.getElementById('leave-form').addEventListener('submit', function (e) {
+          e.preventDefault();
+          const memo = document.getElementById('leave-memo').value.trim();
+          const today = getTodayStr();
+          const existing = getTodayRecord(empId);
+          if (existing) {
+            existing.status = 'leave';
+            existing.checkIn = null;
+            existing.checkOut = null;
+            existing.memo = memo;
+          } else {
+            state.records.push({
+              id: 'rec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+              empId: empId,
+              date: today,
+              status: 'leave',
+              checkIn: null,
+              checkOut: null,
+              memo: memo
+            });
+          }
+          saveState();
+          const savedLv = getTodayRecord(empId);
+          if (savedLv) pushToSheet({ action: 'upsertRecord', record: savedLv });
+          closeModal();
+          renderCheckView();
+          showToast(emp.name + '님 휴가로 등록되었습니다.', 'info');
+        });
+      }
+
+      // Record Edit / Add Modal
+      function openRecordModal(recordId, presetEmpId) {
+        const rec = recordId ? state.records.find(function (r) { return r.id === recordId; }) : null;
+        const isEdit = Boolean(rec);
+        const empOptions = state.employees.map(function (e) {
+          const selected = (rec ? rec.empId === e.id : presetEmpId === e.id) ? ' selected' : '';
+          return '<option value="' + e.id + '"' + selected + '>' + escapeHtml(e.name) + ' (' + escapeHtml(e.department) + ')</option>';
+        }).join('');
+
+        openModal(isEdit ? '출퇴근 기록 수정' : '수동 출퇴근 기록 추가',
+          '<form id="record-form" class="space-y-3.5">' +
+            '<div>' +
+              '<label class="block text-xs font-semibold text-slate-600 mb-1">직원</label>' +
+              '<select id="rec-emp" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" ' + (isEdit ? 'disabled' : '') + '>' + empOptions + '</select>' +
+            '</div>' +
+            '<div class="grid grid-cols-2 gap-3">' +
+              '<div>' +
+                '<label class="block text-xs font-semibold text-slate-600 mb-1">날짜</label>' +
+                '<input id="rec-date" type="date" value="' + (rec ? rec.date : getTodayStr()) + '" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm tabular-nums" required />' +
+              '</div>' +
+              '<div>' +
+                '<label class="block text-xs font-semibold text-slate-600 mb-1">상태</label>' +
+                '<select id="rec-status" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">' +
+                  '<option value="working"' + (rec && rec.status === 'working' ? ' selected' : '') + '>근무 중</option>' +
+                  '<option value="away"' + (rec && rec.status === 'away' ? ' selected' : '') + '>외근·휴식</option>' +
+                  '<option value="off"' + (!rec || rec.status === 'off' ? ' selected' : '') + '>퇴근 완료</option>' +
+                  '<option value="leave"' + (rec && rec.status === 'leave' ? ' selected' : '') + '>휴가·연차</option>' +
+                '</select>' +
+              '</div>' +
+            '</div>' +
+            '<div class="grid grid-cols-2 gap-3" id="rec-time-fields">' +
+              '<div>' +
+                '<label class="block text-xs font-semibold text-slate-600 mb-1">출근 시각</label>' +
+                '<input id="rec-in" type="time" value="' + (rec && rec.checkIn ? rec.checkIn : state.settings.startTime) + '" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm tabular-nums" />' +
+              '</div>' +
+              '<div>' +
+                '<label class="block text-xs font-semibold text-slate-600 mb-1">퇴근 시각</label>' +
+                '<input id="rec-out" type="time" value="' + (rec && rec.checkOut ? rec.checkOut : (isEdit ? '' : state.settings.endTime)) + '" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm tabular-nums" />' +
+              '</div>' +
+            '</div>' +
+            '<div>' +
+              '<label class="block text-xs font-semibold text-slate-600 mb-1">메모</label>' +
+              '<input id="rec-memo" type="text" value="' + escapeHtml(rec ? rec.memo : '') + '" placeholder="예: 외근, 반차, 출근 누락 보정" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />' +
+            '</div>' +
+            '<div class="flex gap-2 pt-1">' +
+              (isEdit ? '<button type="button" id="rec-delete-btn" class="px-3.5 py-2.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-semibold">삭제</button>' : '') +
+              '<button type="button" id="rec-cancel-btn" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">취소</button>' +
+              '<button type="submit" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">저장</button>' +
+            '</div>' +
+          '</form>'
+        );
+
+        const statusSelect = document.getElementById('rec-status');
+        const timeFields = document.getElementById('rec-time-fields');
+        function syncTimeVisibility() {
+          timeFields.classList.toggle('opacity-40', statusSelect.value === 'leave');
+        }
+        syncTimeVisibility();
+        statusSelect.addEventListener('change', syncTimeVisibility);
+
+        document.getElementById('rec-cancel-btn').addEventListener('click', closeModal);
+        if (isEdit) {
+          document.getElementById('rec-delete-btn').addEventListener('click', function () {
+            state.records = state.records.filter(function (r) { return r.id !== rec.id; });
+            saveState();
+            pushToSheet({ action: 'deleteRecord', recordId: rec.id });
+            closeModal();
+            renderAll();
+            showToast('기록이 삭제되었습니다.', 'info');
+          });
+        }
+
+        document.getElementById('record-form').addEventListener('submit', function (e) {
+          e.preventDefault();
+          const empId = isEdit ? rec.empId : document.getElementById('rec-emp').value;
+          const date = document.getElementById('rec-date').value;
+          const status = document.getElementById('rec-status').value;
+          const checkIn = status === 'leave' ? null : (document.getElementById('rec-in').value || null);
+          const checkOut = (status === 'leave' || status === 'working' || status === 'away')
+            ? (status === 'off' ? document.getElementById('rec-out').value || null : null)
+            : (document.getElementById('rec-out').value || null);
+          const memo = document.getElementById('rec-memo').value.trim();
+
+          if (isEdit) {
+            rec.date = date;
+            rec.status = status;
+            rec.checkIn = checkIn;
+            rec.checkOut = checkOut;
+            rec.memo = memo;
+          } else {
+            const dup = state.records.find(function (r) { return r.empId === empId && r.date === date; });
+            if (dup) {
+              dup.status = status;
+              dup.checkIn = checkIn;
+              dup.checkOut = checkOut;
+              dup.memo = memo;
+            } else {
+              state.records.push({
+                id: 'rec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                empId: empId,
+                date: date,
+                status: status,
+                checkIn: checkIn,
+                checkOut: checkOut,
+                memo: memo
+              });
+            }
+          }
+          saveState();
+          const targetRec = isEdit ? rec : state.records.find(function (r) { return r.empId === empId && r.date === date; });
+          if (targetRec) pushToSheet({ action: 'upsertRecord', record: targetRec });
+          closeModal();
+          renderAll();
+          showToast('출퇴근 기록이 저장되었습니다.', 'success');
+        });
+      }
+
+      // Employee Add / Edit Modal
+      function openEmployeeModal(empId) {
+        const emp = empId ? getEmployeeById(empId) : null;
+        const isEdit = Boolean(emp);
+        openModal(isEdit ? '직원 정보 수정' : '새 직원 추가',
+          '<form id="emp-form" class="space-y-3.5">' +
+            '<div>' +
+              '<label class="block text-xs font-semibold text-slate-600 mb-1">이름</label>' +
+              '<input id="emp-name" type="text" value="' + escapeHtml(emp ? emp.name : '') + '" placeholder="예: 홍길동" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" required />' +
+            '</div>' +
+            '<div class="grid grid-cols-2 gap-3">' +
+              '<div>' +
+                '<label class="block text-xs font-semibold text-slate-600 mb-1">부서</label>' +
+                '<input id="emp-dept" type="text" value="' + escapeHtml(emp ? emp.department : '운영팀') + '" placeholder="예: 개발팀" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" required />' +
+              '</div>' +
+              '<div>' +
+                '<label class="block text-xs font-semibold text-slate-600 mb-1">직책</label>' +
+                '<input id="emp-role" type="text" value="' + escapeHtml(emp ? emp.role : '팀원') + '" placeholder="예: 매니저" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" required />' +
+              '</div>' +
+            '</div>' +
+            '<div>' +
+              '<label class="block text-xs font-semibold text-slate-600 mb-1">PIN 번호 (숫자 4자리 · 선택)</label>' +
+              '<input id="emp-pin" type="text" inputmode="numeric" maxlength="4" value="' + escapeHtml(emp ? emp.pin : '') + '" placeholder="예: 1234" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm tabular-nums" />' +
+            '</div>' +
+            '<div class="flex gap-2 pt-1">' +
+              '<button type="button" id="emp-cancel-btn" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">취소</button>' +
+              '<button type="submit" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">저장</button>' +
+            '</div>' +
+          '</form>'
+        );
+        document.getElementById('emp-cancel-btn').addEventListener('click', closeModal);
+        document.getElementById('emp-form').addEventListener('submit', function (e) {
+          e.preventDefault();
+          const name = document.getElementById('emp-name').value.trim();
+          const department = document.getElementById('emp-dept').value.trim() || '공통';
+          const role = document.getElementById('emp-role').value.trim() || '팀원';
+          const pin = document.getElementById('emp-pin').value.trim();
+          if (!name) return;
+
+          if (isEdit) {
+            emp.name = name;
+            emp.department = department;
+            emp.role = role;
+            emp.pin = pin;
+          } else {
+            state.employees.push({
+              id: 'emp-' + Date.now(),
+              name: name,
+              department: department,
+              role: role,
+              pin: pin,
+              colorIdx: state.employees.length % AVATAR_COLORS.length
+            });
+          }
+          saveState();
+          pushToSheet({ action: 'syncEmployees', employees: state.employees });
+          closeModal();
+          renderAll();
+          showToast(isEdit ? '직원 정보가 수정되었습니다.' : name + '님이 추가되었습니다.', 'success');
+        });
+      }
+
+      // Confirmation Modal
+      function openConfirmModal(title, message, confirmLabel, onConfirm) {
+        openModal(title,
+          '<div class="space-y-4">' +
+            '<p class="text-sm text-slate-600 leading-relaxed">' + escapeHtml(message) + '</p>' +
+            '<div class="flex gap-2">' +
+              '<button type="button" id="confirm-cancel-btn" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">취소</button>' +
+              '<button type="button" id="confirm-ok-btn" class="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold">' + escapeHtml(confirmLabel) + '</button>' +
+            '</div>' +
+          '</div>'
+        );
+        document.getElementById('confirm-cancel-btn').addEventListener('click', closeModal);
+        document.getElementById('confirm-ok-btn').addEventListener('click', function () {
+          closeModal();
+          onConfirm();
+        });
+      }
+
+      // CSV Export
+      function exportCsv() {
+        const month = state.ui.recordsMonth || getCurrentMonthStr();
+        const rows = state.records
+          .filter(function (r) { return r.date && r.date.startsWith(month); })
+          .sort(function (a, b) { return a.date.localeCompare(b.date); });
+
+        if (rows.length === 0) {
+          showToast('선택한 월에 내보낼 기록이 없습니다.', 'error');
+          return;
+        }
+
+        const header = ['날짜', '이름', '부서', '상태', '출근시각', '퇴근시각', '근무시간(분)', '지각여부', '메모'];
+        const statusKr = { working: '근무중', away: '외근/휴식', off: '퇴근완료', leave: '휴가' };
+        const csvLines = [header.join(',')];
+
+        rows.forEach(function (r) {
+          const emp = getEmployeeById(r.empId);
+          const cols = [
+            r.date,
+            emp ? emp.name : '삭제된직원',
+            emp ? emp.department : '',
+            statusKr[r.status] || r.status,
+            r.checkIn || '',
+            r.checkOut || '',
+            r.status === 'leave' ? '0' : String(computeWorkedMinutes(r, state.settings)),
+            isLate(r, state.settings) ? '지각' : '',
+            (r.memo || '').replace(/"/g, '""')
+          ];
+          csvLines.push(cols.map(function (c) { return '"' + c + '"'; }).join(','));
+        });
+
+        const blob = new Blob(['\uFEFF' + csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '출퇴근기록_' + month + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast('CSV 파일이 다운로드되었습니다.', 'success');
+      }
+
+      // JSON Backup / Restore
+      function backupJson() {
+        const payload = {
+          exportedAt: new Date().toISOString(),
+          employees: state.employees,
+          records: state.records,
+          settings: state.settings
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '출퇴근백업_' + getTodayStr() + '.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast('JSON 백업 파일이 저장되었습니다.', 'success');
+      }
+
+      function restoreJson(file) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function (ev) {
+          try {
+            const parsed = JSON.parse(String(ev.target.result || ''));
+            if (!Array.isArray(parsed.employees) || !Array.isArray(parsed.records)) {
+              showToast('올바른 백업 파일 형식이 아닙니다.', 'error');
+              return;
+            }
+            state.employees = parsed.employees;
+            state.records = parsed.records;
+            state.settings = Object.assign({}, DEFAULT_SETTINGS, parsed.settings || {});
+            saveState();
+            renderAll();
+            showToast('백업 데이터가 복원되었습니다.', 'success');
+          } catch (err) {
+            showToast('파일을 읽는 중 오류가 발생했습니다.', 'error');
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      // Bind Global Events
+      function bindEvents() {
+        // Tab navigation
+        document.querySelectorAll('.nav-tab').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            state.ui.activeTab = btn.getAttribute('data-tab');
+            renderAll();
+          });
+        });
+
+        // Status filter pills
+        document.getElementById('status-filter-bar').addEventListener('click', function (e) {
+          const btn = e.target.closest('.status-filter-btn');
+          if (!btn) return;
+          state.ui.statusFilter = btn.getAttribute('data-status-filter');
+          renderCheckView();
+        });
+
+        // Search & Dept filter
+        document.getElementById('employee-search').addEventListener('input', function (e) {
+          state.ui.searchQuery = e.target.value;
+          renderCheckView();
+        });
+        document.getElementById('dept-filter').addEventListener('change', function (e) {
+          state.ui.deptFilter = e.target.value;
+          renderCheckView();
+        });
+
+        // Employee card action delegation
+        document.getElementById('employee-grid').addEventListener('click', function (e) {
+          const btn = e.target.closest('button[data-action]');
+          if (!btn) return;
+          const action = btn.getAttribute('data-action');
+          const empId = btn.getAttribute('data-emp-id');
+          if (action === 'check-in') handleCheckIn(empId);
+          else if (action === 'check-out') handleCheckOut(empId);
+          else if (action === 'toggle-away') handleToggleAway(empId);
+          else if (action === 'mark-leave') handleMarkLeave(empId);
+          else if (action === 'edit-today') {
+            const rec = getTodayRecord(empId);
+            if (rec) openRecordModal(rec.id);
+          }
+        });
+
+        // Records tab controls
+        document.getElementById('records-month').addEventListener('change', function (e) {
+          state.ui.recordsMonth = e.target.value || getCurrentMonthStr();
+          renderRecordsView();
+        });
+        document.getElementById('records-emp-filter').addEventListener('change', function (e) {
+          state.ui.recordsEmpFilter = e.target.value;
+          renderRecordsView();
+        });
+        document.getElementById('btn-add-manual-record').addEventListener('click', function () {
+          openRecordModal(null, state.employees[0] ? state.employees[0].id : null);
+        });
+        document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
+
+        // Daily logs table edit/delete delegation
+        document.getElementById('daily-logs-body').addEventListener('click', function (e) {
+          const btn = e.target.closest('button[data-record-action]');
+          if (!btn) return;
+          const action = btn.getAttribute('data-record-action');
+          const recId = btn.getAttribute('data-record-id');
+          if (action === 'edit') {
+            openRecordModal(recId);
+          } else if (action === 'delete') {
+            openConfirmModal('기록 삭제', '이 출퇴근 기록을 삭제하시겠습니까?', '삭제', function () {
+              state.records = state.records.filter(function (r) { return r.id !== recId; });
+              saveState();
+              pushToSheet({ action: 'deleteRecord', recordId: recId });
+              renderRecordsView();
+              showToast('기록이 삭제되었습니다.', 'info');
+            });
+          }
+        });
+
+        // Team tab controls
+        document.getElementById('btn-open-add-emp').addEventListener('click', function () {
+          openEmployeeModal(null);
+        });
+        document.getElementById('team-list').addEventListener('click', function (e) {
+          const btn = e.target.closest('button[data-emp-action]');
+          if (!btn) return;
+          const action = btn.getAttribute('data-emp-action');
+          const empId = btn.getAttribute('data-emp-id');
+          if (action === 'edit') {
+            openEmployeeModal(empId);
+          } else if (action === 'delete') {
+            const emp = getEmployeeById(empId);
+            if (!emp) return;
+            openConfirmModal('직원 삭제', emp.name + '님을 명단에서 삭제하시겠습니까? 기존 출퇴근 기록은 유지됩니다.', '삭제', function () {
+              state.employees = state.employees.filter(function (item) { return item.id !== empId; });
+              saveState();
+              pushToSheet({ action: 'syncEmployees', employees: state.employees });
+              renderAll();
+              showToast(emp.name + '님이 명단에서 삭제되었습니다.', 'info');
+            });
+          }
+        });
+
+        // Google Sheets & PWA controls
+        document.getElementById('btn-sync-now').addEventListener('click', function () {
+          pullFromSheet(true);
+        });
+        document.getElementById('btn-save-sheet-url').addEventListener('click', async function () {
+          const url = document.getElementById('set-sheet-url').value.trim();
+          if (url && !isValidSheetUrl(url)) {
+            showToast('https://script.google.com/ 로 시작하는 웹 앱 URL을 입력하세요.', 'error');
+            return;
+          }
+          state.settings.sheetUrl = url;
+          saveState();
+          if (!url) {
+            updateSyncIndicators(false, '');
+            showToast('구글 시트 연동이 해제되었습니다.', 'info');
+            return;
+          }
+          const ok = await pullFromSheet(true);
+          if (ok && state.employees.length > 0) {
+            await pushToSheet({ action: 'syncEmployees', employees: state.employees });
+          }
+        });
+        document.getElementById('btn-open-apps-script').addEventListener('click', openAppsScriptModal);
+        document.getElementById('btn-open-install-guide').addEventListener('click', openInstallGuideModal);
+
+        // Geofence bar controls
+        document.getElementById('btn-geo-refresh').addEventListener('click', function () {
+          requestRealLocation(false);
+        });
+        document.querySelectorAll('.geo-sim-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            const simType = btn.getAttribute('data-geo-sim');
+            state.geo.mode = simType === 'inside' ? 'sim-inside' : 'sim-outside';
+            recomputeGeoDistance();
+            renderCheckView();
+            showToast(simType === 'inside' ? '테스트 위치: 직장 범위 안으로 이동했습니다.' : '테스트 위치: 직장 범위 밖으로 이동했습니다.', 'info');
+          });
+        });
+
+        // Set current location as workplace
+        document.getElementById('btn-set-current-workplace').addEventListener('click', function () {
+          if (!navigator.geolocation) {
+            showToast('이 브라우저에서는 GPS 기능을 지원하지 않습니다.', 'error');
+            return;
+          }
+          try {
+            navigator.geolocation.getCurrentPosition(
+              function (pos) {
+                const lat = Number(pos.coords.latitude.toFixed(6));
+                const lng = Number(pos.coords.longitude.toFixed(6));
+                document.getElementById('set-workplace-lat').value = String(lat);
+                document.getElementById('set-workplace-lng').value = String(lng);
+                state.settings.workplaceLat = lat;
+                state.settings.workplaceLng = lng;
+                state.geo.lat = lat;
+                state.geo.lng = lng;
+                state.geo.mode = 'real';
+                recomputeGeoDistance();
+                saveState();
+                showToast('현재 위치가 직장 좌표로 저장되었습니다.', 'success');
+              },
+              function () {
+                showToast('위치 권한을 허용해야 현재 좌표를 가져올 수 있습니다.', 'error');
+              },
+              { enableHighAccuracy: true, timeout: 6000 }
+            );
+          } catch (err) {
+            showToast('현재 좌표를 불러오지 못했습니다.', 'error');
+          }
+        });
+
+        // Settings form
+        document.getElementById('settings-form').addEventListener('submit', function (e) {
+          e.preventDefault();
+          state.settings.startTime = document.getElementById('set-start-time').value || '09:00';
+          state.settings.endTime = document.getElementById('set-end-time').value || '18:00';
+          state.settings.graceMinutes = Math.max(0, parseInt(document.getElementById('set-grace-min').value, 10) || 0);
+          state.settings.breakMinutes = Math.max(0, parseInt(document.getElementById('set-break-min').value, 10) || 0);
+          state.settings.requirePin = document.getElementById('set-require-pin').checked;
+          state.settings.geoEnabled = document.getElementById('set-geo-enabled').checked;
+          state.settings.workplaceName = document.getElementById('set-workplace-name').value.trim() || '우리 회사';
+          state.settings.radiusMeters = Math.max(20, parseInt(document.getElementById('set-geo-radius').value, 10) || 100);
+          const latVal = parseFloat(document.getElementById('set-workplace-lat').value);
+          const lngVal = parseFloat(document.getElementById('set-workplace-lng').value);
+          if (!Number.isNaN(latVal)) state.settings.workplaceLat = latVal;
+          if (!Number.isNaN(lngVal)) state.settings.workplaceLng = lngVal;
+          recomputeGeoDistance();
+          saveState();
+          renderAll();
+          showToast('근무 기준 및 위치 설정이 저장되었습니다.', 'success');
+        });
+
+        // Backup & Restore & Reset
+        document.getElementById('btn-backup-json').addEventListener('click', backupJson);
+        document.getElementById('input-restore-json').addEventListener('change', function (e) {
+          const file = e.target.files && e.target.files[0];
+          if (file) restoreJson(file);
+          e.target.value = '';
+        });
+        document.getElementById('btn-reset-records').addEventListener('click', function () {
+          openConfirmModal('전체 기록 초기화', '모든 출퇴근 기록을 삭제하시겠습니까? 직원 명단과 설정은 유지됩니다.', '초기화', function () {
+            state.records = [];
+            saveState();
+            renderAll();
+            showToast('모든 출퇴근 기록이 초기화되었습니다.', 'info');
+          });
+        });
+
+        // Modal close
+        document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+        document.getElementById('modal-overlay').addEventListener('click', function (e) {
+          if (e.target === e.currentTarget) closeModal();
+        });
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape') closeModal();
+        });
+      }
+
+      // Init
+      function init() {
+        loadState();
+        bindEvents();
+        updateLiveClock();
+        if (clockInterval) clearInterval(clockInterval);
+        clockInterval = setInterval(updateLiveClock, 1000);
+        renderAll();
+        initPwaManifest();
+        updateSyncIndicators(false, '');
+        if (state.settings.geoEnabled) {
+          requestRealLocation(true);
+        }
+        if (isValidSheetUrl(state.settings.sheetUrl)) {
+          pullFromSheet(false);
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>
