@@ -2,6 +2,9 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#4f46e5" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -449,7 +452,7 @@
     (function () {
       'use strict';
 
-      const STORAGE_KEY = 'team_attendance_app_v4';
+      const STORAGE_KEY = 'team_attendance_app_v5';
 
       const AVATAR_COLORS = [
         'bg-indigo-100 text-indigo-700',
@@ -811,6 +814,61 @@
         }
       }
 
+      const MONTH_MAP = {
+        Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+        Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+      };
+
+      let pendingPushes = 0;
+      let syncRevision = 0;
+
+      // Timezone-proof parser for Google Sheets Date.toString() & ISO strings
+      function normalizeSheetDate(val) {
+        if (!val) return '';
+        const s = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        // Match Apps Script Date.toString() literal date before GMT (prevents US/KR timezone day shift)
+        const gsMatch = s.match(/^[A-Za-z]{3}\s+([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})\b/);
+        if (gsMatch && MONTH_MAP[gsMatch[1]]) {
+          return gsMatch[3] + '-' + MONTH_MAP[gsMatch[1]] + '-' + pad2(gsMatch[2]);
+        }
+        // Match YYYY. M. D or YYYY/M/D
+        const dotMatch = s.match(/^(\d{4})[.\/-]\s*(\d{1,2})[.\/-]\s*(\d{1,2})/);
+        if (dotMatch) {
+          return dotMatch[1] + '-' + pad2(dotMatch[2]) + '-' + pad2(dotMatch[3]);
+        }
+        const d = new Date(s);
+        if (!Number.isNaN(d.getTime())) {
+          return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+        }
+        return s;
+      }
+
+      // Timezone-proof parser for Google Sheets 1899-12-30 Time cells (prevents 1899 GMT+0827 / PST shift!)
+      function normalizeSheetTime(val) {
+        if (!val) return null;
+        const s = String(val).trim();
+        if (!s || s === 'null' || s === 'undefined') return null;
+        const hmOnly = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+        if (hmOnly) {
+          return pad2(hmOnly[1]) + ':' + pad2(hmOnly[2]);
+        }
+        // Match Apps Script Date.toString() literal HH:MM:SS right before GMT (e.g. "Sat Dec 30 1899 11:20:00 GMT+0827")
+        const gsTime = s.match(/\b(\d{2}):(\d{2}):\d{2}\s+GMT/);
+        if (gsTime) {
+          return gsTime[1] + ':' + gsTime[2];
+        }
+        const d = new Date(s);
+        if (!Number.isNaN(d.getTime())) {
+          return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+        }
+        return s;
+      }
+
+      function makeRecordId(empId, dateStr) {
+        return 'rec_' + empId + '_' + dateStr;
+      }
+
       function isValidSheetUrl(url) {
         return typeof url === 'string' && /^https:\/\/script\.google\.com\//.test(url.trim());
       }
@@ -849,19 +907,57 @@
       async function pullFromSheet(showFeedback) {
         const url = (state.settings.sheetUrl || '').trim();
         if (!isValidSheetUrl(url)) return false;
+        if (!showFeedback && pendingPushes > 0) return false;
+        const myRev = syncRevision;
         updateSyncIndicators(true, '');
         try {
-          const res = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), { method: 'GET' });
+          const res = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), {
+            method: 'GET',
+            cache: 'no-store',
+            redirect: 'follow'
+          });
           if (!res.ok) throw new Error('HTTP ' + res.status);
           const data = await res.json();
+          // Discard stale pull if a local write happened while GET was in flight
+          if (myRev !== syncRevision || pendingPushes > 0) {
+            updateSyncIndicators(false, '');
+            return false;
+          }
           if (data && data.ok) {
             if (Array.isArray(data.employees) && data.employees.length > 0) {
-              state.employees = data.employees;
+              state.employees = data.employees
+                .filter(function (e) { return e && e.id && e.name; })
+                .map(function (e, idx) {
+                  return {
+                    id: String(e.id),
+                    name: String(e.name),
+                    department: e.department ? String(e.department) : '미지정',
+                    role: e.role ? String(e.role) : '팀원',
+                    pin: e.pin != null ? String(e.pin) : '',
+                    colorIdx: Number.isNaN(Number(e.colorIdx)) ? idx : Number(e.colorIdx)
+                  };
+                });
             } else if (state.employees.length > 0) {
               pushToSheet({ action: 'syncEmployees', employees: state.employees });
             }
             if (Array.isArray(data.records)) {
-              state.records = data.records;
+              const dedupMap = new Map();
+              data.records.forEach(function (r) {
+                if (!r || !r.empId) return;
+                const normDate = normalizeSheetDate(r.date);
+                if (!normDate) return;
+                const normalized = {
+                  id: r.id ? String(r.id) : makeRecordId(String(r.empId), normDate),
+                  empId: String(r.empId),
+                  date: normDate,
+                  status: r.status ? String(r.status) : 'working',
+                  checkIn: normalizeSheetTime(r.checkIn),
+                  checkOut: normalizeSheetTime(r.checkOut),
+                  memo: r.memo ? String(r.memo) : ''
+                };
+                dedupMap.set(normalized.empId + '|' + normalized.date, normalized);
+              });
+              state.records = Array.from(dedupMap.values());
             }
             saveState();
             updateSyncIndicators(false, '');
@@ -880,18 +976,30 @@
       async function pushToSheet(payload) {
         const url = (state.settings.sheetUrl || '').trim();
         if (!isValidSheetUrl(url)) return;
+        syncRevision++;
+        pendingPushes++;
         updateSyncIndicators(true, '');
         try {
           const res = await fetch(url, {
             method: 'POST',
+            redirect: 'follow',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
           });
           if (!res.ok) throw new Error('HTTP ' + res.status);
+          pendingPushes = Math.max(0, pendingPushes - 1);
           updateSyncIndicators(false, '');
+          if (pendingPushes === 0) {
+            setTimeout(function () { pullFromSheet(false); }, 600);
+          }
         } catch (err) {
-          updateSyncIndicators(false, 'error');
-          showToast('시트 저장 실패 (현재 기기에는 임시 저장됨)', 'error');
+          pendingPushes = Math.max(0, pendingPushes - 1);
+          // On iOS Safari / WebView, Apps Script 302 redirect after POST can sometimes throw CORS error even after doPost succeeded
+          const recovered = await pullFromSheet(false);
+          if (!recovered) {
+            updateSyncIndicators(false, 'error');
+            showToast('시트 저장 확인 실패 (네트워크 상태를 확인해 주세요)', 'error');
+          }
         }
       }
 
@@ -1548,7 +1656,7 @@
             existing.checkIn = existing.checkIn || nowTime;
           } else {
             state.records.push({
-              id: 'rec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+              id: makeRecordId(empId, today),
               empId: empId,
               date: today,
               status: 'working',
@@ -1632,7 +1740,7 @@
             existing.memo = memo;
           } else {
             state.records.push({
-              id: 'rec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+              id: makeRecordId(empId, today),
               empId: empId,
               date: today,
               status: 'leave',
@@ -1748,7 +1856,7 @@
               dup.memo = memo;
             } else {
               state.records.push({
-                id: 'rec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                id: makeRecordId(empId, date),
                 empId: empId,
                 date: date,
                 status: status,
@@ -2135,10 +2243,14 @@
           e.target.value = '';
         });
         document.getElementById('btn-reset-records').addEventListener('click', function () {
-          openConfirmModal('전체 기록 초기화', '모든 출퇴근 기록을 삭제하시겠습니까? 직원 명단과 설정은 유지됩니다.', '초기화', function () {
+          openConfirmModal('전체 기록 초기화', '모든 출퇴근 기록을 삭제하시겠습니까? 직원 명단과 설정은 유지됩니다.', '초기화', async function () {
+            const oldIds = state.records.map(function (r) { return r.id; }).filter(Boolean);
             state.records = [];
             saveState();
             renderAll();
+            for (let i = 0; i < oldIds.length; i++) {
+              await pushToSheet({ action: 'deleteRecord', recordId: oldIds[i] });
+            }
             showToast('모든 출퇴근 기록이 초기화되었습니다.', 'info');
           });
         });
@@ -2169,6 +2281,21 @@
         if (isValidSheetUrl(state.settings.sheetUrl)) {
           pullFromSheet(false);
         }
+        setInterval(function () {
+          if (isValidSheetUrl(state.settings.sheetUrl) && document.visibilityState !== 'hidden') {
+            pullFromSheet(false);
+          }
+        }, 10000);
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible' && isValidSheetUrl(state.settings.sheetUrl)) {
+            pullFromSheet(false);
+          }
+        });
+        window.addEventListener('focus', function () {
+          if (isValidSheetUrl(state.settings.sheetUrl)) {
+            pullFromSheet(false);
+          }
+        });
       }
 
       if (document.readyState === 'loading') {
