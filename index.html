@@ -449,7 +449,7 @@
     (function () {
       'use strict';
 
-      const STORAGE_KEY = 'team_attendance_app_v3';
+      const STORAGE_KEY = 'team_attendance_app_v4';
 
       const AVATAR_COLORS = [
         'bg-indigo-100 text-indigo-700',
@@ -477,8 +477,8 @@
         requirePin: false,
         geoEnabled: true,
         workplaceName: '우리 회사',
-        workplaceLat: 37.3219,
-        workplaceLng: 126.8309,
+        workplaceLat: 37.319456,
+        workplaceLng: 126.832646,
         radiusMeters: 100,
         sheetUrl: 'https://script.google.com/macros/s/AKfycbySqh_FQtTAfVQQa8ghNUllHiAlEPBjA20ZwtPi5s0ZUGUQP_wjYGTMXx_2LkiJnZosyQ/exec'
       };
@@ -654,8 +654,8 @@
           state.geo.distanceMeters = calcDistanceMeters(
             state.geo.lat,
             state.geo.lng,
-            Number(state.settings.workplaceLat) || 37.3219,
-            Number(state.settings.workplaceLng) || 126.8309
+            Number(state.settings.workplaceLat) || 37.319456,
+            Number(state.settings.workplaceLng) || 126.832646
           );
           state.geo.status = 'ready';
         }
@@ -1481,8 +1481,8 @@
         document.getElementById('set-geo-enabled').checked = Boolean(state.settings.geoEnabled);
         document.getElementById('set-workplace-name').value = state.settings.workplaceName || '우리 회사';
         document.getElementById('set-geo-radius').value = String(state.settings.radiusMeters || 100);
-        document.getElementById('set-workplace-lat').value = String(state.settings.workplaceLat != null ? state.settings.workplaceLat : 37.3219);
-        document.getElementById('set-workplace-lng').value = String(state.settings.workplaceLng != null ? state.settings.workplaceLng : 126.8309);
+        document.getElementById('set-workplace-lat').value = String(state.settings.workplaceLat != null ? state.settings.workplaceLat : 37.319456);
+        document.getElementById('set-workplace-lng').value = String(state.settings.workplaceLng != null ? state.settings.workplaceLng : 126.832646);
         document.getElementById('set-sheet-url').value = state.settings.sheetUrl || '';
         updateSyncIndicators(false, '');
       }
